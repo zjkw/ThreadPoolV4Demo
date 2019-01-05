@@ -89,7 +89,7 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\..\Include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>ThreadPoolV4;TestCase</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -118,6 +118,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>ThreadPoolV4;TestCase</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -144,31 +145,31 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="NativeCallNative_TestCase.h" />
-    <ClInclude Include="NativeCallWrap_TestCase.h" />
-    <ClInclude Include="ThreadInnerDef.h" />
-    <ClInclude Include="ThreadPoolV4.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
-    <ClInclude Include="ThreadPoolV4Imp.h" />
-    <ClInclude Include="WrapCallNative_TestCase.h" />
-    <ClInclude Include="WrapCallWrap_TestCase.h" />
+    <ClInclude Include="TestCase\NativeCallNative_TestCase.h" />
+    <ClInclude Include="TestCase\NativeCallWrap_TestCase.h" />
+    <ClInclude Include="TestCase\WrapCallNative_TestCase.h" />
+    <ClInclude Include="TestCase\WrapCallWrap_TestCase.h" />
+    <ClInclude Include="ThreadPoolV4\ThreadInnerDef.h" />
+    <ClInclude Include="ThreadPoolV4\ThreadPoolV4.h" />
+    <ClInclude Include="ThreadPoolV4\ThreadPoolV4Imp.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="NativeCallNative_TestCase.cpp" />
-    <ClCompile Include="NativeCallWrap_TestCase.cpp" />
-    <ClCompile Include="ThreadInnerDef.cpp" />
-    <ClCompile Include="ThreadPoolV4.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="ThreadPoolV4Imp.cpp" />
+    <ClCompile Include="TestCase\NativeCallNative_TestCase.cpp" />
+    <ClCompile Include="TestCase\NativeCallWrap_TestCase.cpp" />
+    <ClCompile Include="TestCase\WrapCallNative_TestCase.cpp" />
+    <ClCompile Include="TestCase\WrapCallWrap_TestCase.cpp" />
     <ClCompile Include="ThreadPoolV4Demo.cpp" />
-    <ClCompile Include="WrapCallNative_TestCase.cpp" />
-    <ClCompile Include="WrapCallWrap_TestCase.cpp" />
+    <ClCompile Include="ThreadPoolV4\ThreadInnerDef.cpp" />
+    <ClCompile Include="ThreadPoolV4\ThreadPoolV4.cpp" />
+    <ClCompile Include="ThreadPoolV4\ThreadPoolV4Imp.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
