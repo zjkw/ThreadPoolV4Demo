@@ -38,7 +38,7 @@ void	CWrapCallWrap_TestCase::CallerRoutine(const task_id_t& self_id, std::shared
 	}
 
 	//消息Pump运作
-	RunLoopBase();
+	RunBaseLoop();
 }
 
 void	CWrapCallWrap_TestCase::WorkRoutine(const task_id_t& self_id, std::shared_ptr<ThreadCtrlBlock> tcb, const task_param_t& param)
@@ -47,7 +47,7 @@ void	CWrapCallWrap_TestCase::WorkRoutine(const task_id_t& self_id, std::shared_p
 	ThreadErrorCode tec = RegMsgSink(CMMNO_FIBON_REQ, std::bind(&CWrapCallWrap_TestCase::WorkFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 
 	//6，消息Pump运作
-	RunLoopBase();
+	RunBaseLoop();
 }
 
 void CWrapCallWrap_TestCase::WorkFunc_FibonMathSink(const task_id_t& sender_id, const task_cmd_t& cmd, const task_data_t& data)	//接收者注册的回调函数

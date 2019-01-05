@@ -39,7 +39,7 @@ void	CWrapCallNative_TestCase::NativeCallerRoutinue(const task_id_t& self_id, st
 	_work_thread = std::make_shared<std::thread>(&CWrapCallNative_TestCase::WorkRoutine, this);
 
 	//6，消息Pump运作
-	RunLoopBase();
+	RunBaseLoop();
 }
 
 void	CWrapCallNative_TestCase::WorkRoutine()
@@ -51,7 +51,7 @@ void	CWrapCallNative_TestCase::WorkRoutine()
 	PostMsg(_T("Caller"), CMMNO_WORK_READY, nullptr);
 
 	//6，消息Pump运作
-	RunLoopBase();
+	RunBaseLoop();
 }
 
 void	CWrapCallNative_TestCase::CallFunc_WorkReadySink(const task_id_t& sender_id, const task_cmd_t& cmd, const task_data_t& data)

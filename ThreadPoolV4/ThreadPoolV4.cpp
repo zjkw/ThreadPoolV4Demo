@@ -281,7 +281,7 @@ ThreadErrorCode ThreadPoolV4::SetCurrentName(const task_name_t& name)//ÒòÎªÍÐ¹ÜÏ
 	return 	tixSetTaskName(id, name);
 }
 
-ThreadErrorCode ThreadPoolV4::RunLoopBase()
+ThreadErrorCode ThreadPoolV4::RunBaseLoop()
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
@@ -301,6 +301,50 @@ ThreadErrorCode ThreadPoolV4::RunLoopBase()
 			}
 		}
 		else
+		{
+			Sleep(10);
+		}
+	}
+
+	return TEC_SUCCEED;
+}
+
+ThreadErrorCode ThreadPoolV4::RunWinLoop()
+{
+	task_id_t id = _tls_proxy.CreateIfInvalid();
+	if (id == task_id_null)
+	{
+		return TEC_ALLOC_FAILED;
+	}
+	std::shared_ptr<ThreadCtrlBlock>	tcb = _tls_proxy.GetThreadCtrlBlock();
+
+	while (!tcb->IsWaitExit())
+	{
+		BOOL has_business = FALSE;
+
+		MSG msg;
+		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+		{
+			if (msg.message == WM_QUIT)
+			{
+				break;
+			}
+
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+
+			has_business = TRUE;
+
+			//			Util::Log::Info(_T("CThreadWorkBase"), _T("RunLoop(%u), Msg: %u"), tid, msg.message);
+		}
+
+		size_t count = 0;
+		if (DispatchMsg(count) == TEC_SUCCEED)
+		{
+			has_business = TRUE;
+		}
+		
+		if(!has_business)
 		{
 			Sleep(10);
 		}

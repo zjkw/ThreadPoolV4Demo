@@ -32,7 +32,7 @@ void	CNativeCallWrap_TestCase::WorkRoutine(const task_id_t& self_id, std::shared
 	ThreadErrorCode tec = RegMsgSink(CMMNO_FIBON_REQ, std::bind(&CNativeCallWrap_TestCase::WorkFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 
 	//6，消息Pump运作
-	RunLoopBase();
+	RunBaseLoop();
 }
 
 void CNativeCallWrap_TestCase::WorkFunc_FibonMathSink(const task_id_t& sender_id, const task_cmd_t& cmd, const task_data_t& data)	//接收者注册的回调函数
@@ -68,7 +68,7 @@ void	CNativeCallWrap_TestCase::NativeCallerRoutinue()
 	}
 
 	//消息Pump运作
-	RunLoopBase();
+	RunBaseLoop();
 }
 
 void	CNativeCallWrap_TestCase::CallFunc_FibonMathSink(const task_id_t& sender_id, const task_cmd_t& cmd, const task_data_t& data)

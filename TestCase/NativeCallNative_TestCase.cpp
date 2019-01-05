@@ -41,7 +41,7 @@ void	CNativeCallNative_TestCase::NativeCallerRoutinue()
 	ThreadErrorCode tec = RegMsgSink(CMMNO_FIBON_RES, std::bind(&CNativeCallNative_TestCase::CallFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	tec = RegMsgSink(CMMNO_WORK_READY, std::bind(&CNativeCallNative_TestCase::CallFunc_WorkReadySink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 
-	RunLoopBase();
+	RunBaseLoop();
 }
 
 
@@ -54,7 +54,7 @@ void	CNativeCallNative_TestCase::NativeWorkerRoutinue()
 	PostMsg(_T("Caller_Thread"), CMMNO_WORK_READY, nullptr);
 
 	//6，消息Pump运作
-	RunLoopBase();
+	RunBaseLoop();
 }
 
 void CNativeCallNative_TestCase::WorkFunc_FibonMathSink(const task_id_t& sender_id, const task_cmd_t& cmd, const task_data_t& data)	//接收者注册的回调函数
