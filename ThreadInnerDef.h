@@ -3,6 +3,8 @@
 #include <map>
 #include "ThreadPoolV4.h"
 
+using namespace ThreadPoolV4;
+
 class ManagedThreadCtrlBlock : public ThreadCtrlBlock
 {
 public:

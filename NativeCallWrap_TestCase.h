@@ -4,6 +4,8 @@
 #include <memory>
 #include "ThreadPoolV4.h"
 
+using namespace ThreadPoolV4;
+
 class CNativeCallWrap_TestCase
 {
 public:

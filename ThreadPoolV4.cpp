@@ -5,8 +5,6 @@
 #include "ThreadPoolV4Imp.h"
 #include "ThreadPoolV4.h"
 
-//
-//Ö»ÓĞµ±Ç°Ïß³Ì»áÊ¹ÓÃµ½£¬ËùÓĞÎŞĞè¼ÓËø
 CThreadLocalProxy::CThreadLocalProxy() : _id(task_id_null), _rubbish_sink(nullptr), _managed(FALSE)
 {
 }
@@ -15,7 +13,7 @@ CThreadLocalProxy::~CThreadLocalProxy()
 {
 	DeleteIfValid();
 }
-	
+
 task_id_t	CThreadLocalProxy::CreateIfInvalid()
 {
 	if (_id == task_id_null)
@@ -100,7 +98,7 @@ ThreadErrorCode CThreadLocalProxy::DispatchMsg(size_t& count)
 	count = 0;
 	for (std::vector<task_msgline_t>::iterator it = ar.begin(); it != ar.end(); it++)
 	{
-		if(_tcb)
+		if (_tcb)
 		{
 			if (_tcb->IsWaitExit())
 			{
@@ -136,7 +134,7 @@ void	CThreadLocalProxy::Reset(const task_id_t& id, std::shared_ptr<ThreadCtrlBlo
 	_cmd_table.clear();
 	_rubbish_sink = nullptr;
 	_tcb = tcb;
-	_managed = TRUE;	
+	_managed = TRUE;
 
 	task_name_t name;
 	ThreadErrorCode tec = tixGetTaskName(_id, name);
@@ -171,9 +169,11 @@ std::shared_ptr<ThreadCtrlBlock>	CThreadLocalProxy::GetThreadCtrlBlock()
 
 thread_local CThreadLocalProxy	_tls_proxy;
 
+//Ö»ÓĞµ±Ç°Ïß³Ì»áÊ¹ÓÃµ½£¬ËùÓĞÎŞĞè¼ÓËø
+
 ////////////////////////
 //Õë¶Ô·¢ËÍÕß£¬ÔÊĞí×Ô¼º¸ø×Ô¼º·¢
-ThreadErrorCode PostMsg(const task_id_t& target_id, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags/* = task_flag_null*/, const task_echofunc_t& echofunc/* = nullptr*/)//target_idÎª0±íÊ¾¹ã²¥
+ThreadErrorCode ThreadPoolV4::PostMsg(const task_id_t& target_id, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags/* = task_flag_null*/, const task_echofunc_t& echofunc/* = nullptr*/)//target_idÎª0±íÊ¾¹ã²¥
 {
 	//²ÎÊı¼ì²é
 
@@ -193,7 +193,7 @@ ThreadErrorCode PostMsg(const task_id_t& target_id, const task_cmd_t& cmd, task_
 	return tec;
 }
 
-ThreadErrorCode PostMsg(const task_name_t& target_name, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags/* = task_flag_null*/, const task_echofunc_t& echofunc/* = nullptr*/)//target_idÎª0±íÊ¾¹ã²¥
+ThreadErrorCode ThreadPoolV4::PostMsg(const task_name_t& target_name, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags/* = task_flag_null*/, const task_echofunc_t& echofunc/* = nullptr*/)//target_idÎª0±íÊ¾¹ã²¥
 {
 	//²ÎÊı¼ì²é
 
@@ -218,39 +218,39 @@ ThreadErrorCode PostMsg(const task_name_t& target_name, const task_cmd_t& cmd, t
 
 	return tec;
 }
-																																													//Õë¶Ô½ÓÊÕÕß
-ThreadErrorCode RegRubbishMsgSink(const task_sinkfunc_t& sinkfunc)	//Ã»ÓĞ½ÓÊÕÆ÷µÄÏûÏ¢½øÈëÀ¬»øÏä
+//Õë¶Ô½ÓÊÕÕß
+ThreadErrorCode ThreadPoolV4::RegRubbishMsgSink(const task_sinkfunc_t& sinkfunc)	//Ã»ÓĞ½ÓÊÕÆ÷µÄÏûÏ¢½øÈëÀ¬»øÏä
 {
 	return _tls_proxy.RegRubbishMsgSink(sinkfunc);
 }
 
-ThreadErrorCode UnregRubbishMsgSink()
+ThreadErrorCode ThreadPoolV4::UnregRubbishMsgSink()
 {
 	return _tls_proxy.UnregRubbishMsgSink();
 }
 
-ThreadErrorCode RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc)
+ThreadErrorCode ThreadPoolV4::RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc)
 {
 	return _tls_proxy.RegMsgSink(cmd, sinkfunc);
 }
 
-ThreadErrorCode UnregMsgSink(const task_cmd_t& cmd)
+ThreadErrorCode ThreadPoolV4::UnregMsgSink(const task_cmd_t& cmd)
 {
 	return _tls_proxy.UnregMsgSink(cmd);
 }
 
-ThreadErrorCode DispatchMsg(size_t& count)
+ThreadErrorCode ThreadPoolV4::DispatchMsg(size_t& count)
 {
 	return 	_tls_proxy.DispatchMsg(count);
 }
 
 //Ïß³Ì³Ø
-void			SetClsAttri(const task_cls_t& cls, const UINT16& thread_num, const UINT32& unhandle_msg_timeout)//µ÷½ÚÏß³ÌÊıÁ¿
+void			ThreadPoolV4::SetClsAttri(const task_cls_t& cls, const UINT16& thread_num, const UINT32& unhandle_msg_timeout)//µ÷½ÚÏß³ÌÊıÁ¿
 {
 	tixSetClsAttri(cls, thread_num, unhandle_msg_timeout);
 }
 
-ThreadErrorCode ClearManagedTask()//½«»áÇ¿ÖÆÍ¬²½µÈ´ı³ØÖĞËùÓĞÏß³Ì¹Ø±Õ
+ThreadErrorCode ThreadPoolV4::ClearManagedTask()//½«»áÇ¿ÖÆÍ¬²½µÈ´ı³ØÖĞËùÓĞÏß³Ì¹Ø±Õ
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
@@ -260,7 +260,7 @@ ThreadErrorCode ClearManagedTask()//½«»áÇ¿ÖÆÍ¬²½µÈ´ı³ØÖĞËùÓĞÏß³Ì¹Ø±Õ
 	return tixClearManagedTask(id);
 }
 
-task_id_t GetCurrentTaskID()
+task_id_t ThreadPoolV4::GetCurrentTaskID()
 {
 	return 	_tls_proxy.GetCurrentTaskID();
 }
@@ -271,7 +271,7 @@ void	TlsProxyReset_NoLock(const task_id_t&	id, std::shared_ptr<ThreadCtrlBlock> 
 	_tls_proxy.Reset(id, tcb);
 }
 
-ThreadErrorCode SetCurrentName(const task_name_t& name)//ÒòÎªÍĞ¹ÜÏß³Ì»áÔÚAddManagedTaskÌá¹©Ãû×ÖÄÜÁ¦£¬ÕâÀïÒ²Ë³±ã¸ø·ÇÍĞ¹ÜÏß³ÌÒ»¸ö»ú»á£ºÔö¼Ó±ğÃûÒÔ±ã²éÑ¯
+ThreadErrorCode ThreadPoolV4::SetCurrentName(const task_name_t& name)//ÒòÎªÍĞ¹ÜÏß³Ì»áÔÚAddManagedTaskÌá¹©Ãû×ÖÄÜÁ¦£¬ÕâÀïÒ²Ë³±ã¸ø·ÇÍĞ¹ÜÏß³ÌÒ»¸ö»ú»á£ºÔö¼Ó±ğÃûÒÔ±ã²éÑ¯
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
@@ -281,7 +281,7 @@ ThreadErrorCode SetCurrentName(const task_name_t& name)//ÒòÎªÍĞ¹ÜÏß³Ì»áÔÚAddMana
 	return 	tixSetTaskName(id, name);
 }
 
-ThreadErrorCode RunLoopBase()
+ThreadErrorCode ThreadPoolV4::RunLoopBase()
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
@@ -309,7 +309,7 @@ ThreadErrorCode RunLoopBase()
 	return TEC_SUCCEED;
 }
 
-ThreadErrorCode ExitLoop()
+ThreadErrorCode ThreadPoolV4::ExitLoop()
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
@@ -324,11 +324,11 @@ ThreadErrorCode ExitLoop()
 }
 
 //ÈÎÎñ¹ÜÀí
-ThreadErrorCode AddManagedTask(const task_cls_t& cls, const task_name_t& name, const task_param_t& param, const task_routinefunc_t& routine, task_id_t& id)	//µ÷½ÚÈÎÎñ
+ThreadErrorCode ThreadPoolV4::AddManagedTask(const task_cls_t& cls, const task_name_t& name, const task_param_t& param, const task_routinefunc_t& routine, task_id_t& id)	//µ÷½ÚÈÎÎñ
 {
 	return 	tixAddManagedTask(cls, name, param, routine, id);
 }
-ThreadErrorCode DelManagedTask(const task_id_t& id)//ÊÇ·ñµÈ´ıÄ¿±ê¹Ø±Õ£¬ĞèÒªÃ÷È·µÄÊÇÈç¹û×Ô¼º¹Ø±Õ×Ô¼º»ò¹Ø±Õ·ÇÍĞ¹ÜÏß³Ì£¬½«»áÊÇÇ¿ÖÆ¸Ä³ÉÒì²½
+ThreadErrorCode ThreadPoolV4::DelManagedTask(const task_id_t& id)//ÊÇ·ñµÈ´ıÄ¿±ê¹Ø±Õ£¬ĞèÒªÃ÷È·µÄÊÇÈç¹û×Ô¼º¹Ø±Õ×Ô¼º»ò¹Ø±Õ·ÇÍĞ¹ÜÏß³Ì£¬½«»áÊÇÇ¿ÖÆ¸Ä³ÉÒì²½
 {
 	//²ÎÊı¼ì²é
 
@@ -342,18 +342,18 @@ ThreadErrorCode DelManagedTask(const task_id_t& id)//ÊÇ·ñµÈ´ıÄ¿±ê¹Ø±Õ£¬ĞèÒªÃ÷È·µ
 	return 	tixDelManagedTask(call_id, id);
 }
 
-ThreadErrorCode	GetTaskState(const task_id_t& id, ThreadTaskState& state)
+ThreadErrorCode	ThreadPoolV4::GetTaskState(const task_id_t& id, ThreadTaskState& state)
 {
 	return 	tixGetTaskState(id, state);
 }
 
-ThreadErrorCode GetTaskByName(const task_name_t& name, task_id_t& id)
+ThreadErrorCode ThreadPoolV4::GetTaskByName(const task_name_t& name, task_id_t& id)
 {
 	return 	tixGetTaskByName(name, id);
 }
 
 //Debug
-ThreadErrorCode PrintMeta(const task_id_t& id/* = task_id_self*/)
+ThreadErrorCode ThreadPoolV4::PrintMeta(const task_id_t& id/* = task_id_self*/)
 {
 	if (id == task_id_self)
 	{

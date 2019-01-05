@@ -2,6 +2,8 @@
 
 #include "ThreadPoolV4.h"
 
+using namespace ThreadPoolV4;
+
 class CWrapCallWrap_TestCase
 {
 public:

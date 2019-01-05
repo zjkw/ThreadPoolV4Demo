@@ -16,18 +16,15 @@
     <Filter Include="testcase">
       <UniqueIdentifier>{88a511d2-779a-40c5-97e9-13b271c96dfd}</UniqueIdentifier>
     </Filter>
+    <Filter Include="ThreadPoolV4">
+      <UniqueIdentifier>{1715db49-f471-4e1c-881e-da6a394d45ca}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="targetver.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="ThreadPoolV4Imp.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="ThreadPoolV4.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="WrapCallWrap_TestCase.h">
@@ -43,7 +40,13 @@
       <Filter>testcase</Filter>
     </ClInclude>
     <ClInclude Include="ThreadInnerDef.h">
-      <Filter>头文件</Filter>
+      <Filter>ThreadPoolV4</Filter>
+    </ClInclude>
+    <ClInclude Include="ThreadPoolV4.h">
+      <Filter>ThreadPoolV4</Filter>
+    </ClInclude>
+    <ClInclude Include="ThreadPoolV4Imp.h">
+      <Filter>ThreadPoolV4</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -51,12 +54,6 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="ThreadPoolV4Demo.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="ThreadPoolV4Imp.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="ThreadPoolV4.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="NativeCallNative_TestCase.cpp">
@@ -72,7 +69,13 @@
       <Filter>testcase</Filter>
     </ClCompile>
     <ClCompile Include="ThreadInnerDef.cpp">
-      <Filter>源文件</Filter>
+      <Filter>ThreadPoolV4</Filter>
+    </ClCompile>
+    <ClCompile Include="ThreadPoolV4.cpp">
+      <Filter>ThreadPoolV4</Filter>
+    </ClCompile>
+    <ClCompile Include="ThreadPoolV4Imp.cpp">
+      <Filter>ThreadPoolV4</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
