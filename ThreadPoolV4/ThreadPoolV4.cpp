@@ -470,7 +470,7 @@ TaskErrorCode	ThreadPoolV4::AllocTimer(timer_id_t& tid)
 	return TEC_SUCCEED;
 }
 
-TaskErrorCode	ThreadPoolV4::StartTimer(const timer_id_t& tid, const UINT32& millisecond, const timer_function_t& cb, BOOL immediate/* = FALSE*/)
+TaskErrorCode	ThreadPoolV4::StartTimer(const timer_id_t& tid, const UINT32& millisecond, const timer_sinkfunc_t& cb, BOOL immediate/* = FALSE*/)
 {
 	task_id_t call_id = _tls_proxy.CreateIfInvalid();
 	if (call_id == task_id_null)
@@ -526,7 +526,7 @@ TaskErrorCode	ThreadPoolV4::AllocIdle(idle_id_t& iid)
 	return TEC_SUCCEED;
 }
 
-TaskErrorCode	ThreadPoolV4::StartIdle(const idle_id_t& iid, const idle_function_t& cb)
+TaskErrorCode	ThreadPoolV4::StartIdle(const idle_id_t& iid, const idle_sinkfunc_t& cb)
 {
 	task_id_t call_id = _tls_proxy.CreateIfInvalid();
 	if (call_id == task_id_null)
@@ -639,7 +639,7 @@ BOOL ThreadPoolV4::CTaskTimerHelper::IsActive()
 	return exist;
 }
 
-void ThreadPoolV4::CTaskTimerHelper::SetCallBack(const timer_function_t& cb)
+void ThreadPoolV4::CTaskTimerHelper::SetCallBack(const timer_sinkfunc_t& cb)
 {
 	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
 
@@ -727,7 +727,7 @@ BOOL ThreadPoolV4::CTaskIdleHelper::IsActive()
 	return exist;
 }
 
-void ThreadPoolV4::CTaskIdleHelper::SetCallBack(const idle_function_t& cb)
+void ThreadPoolV4::CTaskIdleHelper::SetCallBack(const idle_sinkfunc_t& cb)
 {
 	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
 

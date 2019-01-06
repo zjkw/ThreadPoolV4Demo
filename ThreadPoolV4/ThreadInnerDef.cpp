@@ -79,7 +79,7 @@ timer_id_t	CTimeWheelSheduler::AllocNewTimer()
 	return ++_id_counter;
 }
 
-BOOL	CTimeWheelSheduler::SetWorkTimer(const timer_id_t& tid, const UINT32& interval, const timer_function_t& cb, BOOL immediate/* = FALSE*/)//immediate表示立即触发
+BOOL	CTimeWheelSheduler::SetWorkTimer(const timer_id_t& tid, const UINT32& interval, const timer_sinkfunc_t& cb, BOOL immediate/* = FALSE*/)//immediate表示立即触发
 {
 	if (!tid || !interval)
 	{
@@ -105,7 +105,7 @@ BOOL	CTimeWheelSheduler::ExistWorkTimer(const timer_id_t& tid)
 	return _timer_wheel_forward.find(tid) != _timer_wheel_forward.end();
 }
 
-BOOL	CTimeWheelSheduler::AddTimerHelper(const timer_id_t& tid, const UINT32& interval, const timer_function_t& cb, const UINT64& trigger_clock)
+BOOL	CTimeWheelSheduler::AddTimerHelper(const timer_id_t& tid, const UINT32& interval, const timer_sinkfunc_t& cb, const UINT64& trigger_clock)
 {
 	DelTimerHelper(tid);
 
@@ -146,7 +146,7 @@ timer_id_t	CIdleSheduler::AllocNewIdle()
 	return ++_id_counter;
 }
 
-BOOL	CIdleSheduler::SetIdle(const idle_id_t& iid, const idle_function_t& cb)
+BOOL	CIdleSheduler::SetIdle(const idle_id_t& iid, const idle_sinkfunc_t& cb)
 {
 	if (!iid || !cb)
 	{
@@ -186,9 +186,9 @@ UINT32	CIdleSheduler::Trigger(std::shared_ptr<ThreadCtrlBlock> tcb)
 	UINT64	last_max_seq = _seq_counter;
 
 	UINT64	cursor = 0;
-	while (true)
+	while (!tcb->IsWaitExit())
 	{
-		std::map<UINT64, idle_function_t>::iterator it = _idle_cb.upper_bound(cursor);
+		std::map<UINT64, idle_sinkfunc_t>::iterator it = _idle_cb.upper_bound(cursor);
 		if (it == _idle_cb.end())
 		{
 			break;

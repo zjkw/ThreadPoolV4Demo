@@ -101,7 +101,7 @@ public:
 	virtual ~CTimeWheelSheduler();
 
 	timer_id_t	AllocNewTimer();
-	BOOL	SetWorkTimer(const timer_id_t& tid, const UINT32& interval, const timer_function_t& cb, BOOL immediate = FALSE);//immediate表示立即触发
+	BOOL	SetWorkTimer(const timer_id_t& tid, const UINT32& interval, const timer_sinkfunc_t& cb, BOOL immediate = FALSE);//immediate表示立即触发
 	void	KillWorkTimer(const timer_id_t& tid);
 	BOOL	ExistWorkTimer(const timer_id_t& tid);
 	UINT32	Trigger(std::shared_ptr<ThreadCtrlBlock> tcb);
@@ -114,9 +114,9 @@ private:
 	{
 		UINT64				trigger_clock;
 		UINT64				seq;
-		timer_function_t	cb;
+		timer_sinkfunc_t	cb;
 		UINT32				interval;
-		TimerItem(const UINT64& trigger_clock_, const UINT64& seq_, const timer_function_t& cb_ = nullptr, const UINT32& interval_ = -1) : trigger_clock(trigger_clock_), seq(seq_), cb(cb_), interval(interval_)
+		TimerItem(const UINT64& trigger_clock_, const UINT64& seq_, const timer_sinkfunc_t& cb_ = nullptr, const UINT32& interval_ = -1) : trigger_clock(trigger_clock_), seq(seq_), cb(cb_), interval(interval_)
 		{
 		}
 		TimerItem() : trigger_clock(0), seq(0), cb(nullptr), interval(-1)
@@ -140,7 +140,7 @@ private:
 		}
 	};
 
-	BOOL	AddTimerHelper(const timer_id_t& tid, const UINT32& interval, const timer_function_t& cb, const UINT64& trigger_clock);
+	BOOL	AddTimerHelper(const timer_id_t& tid, const UINT32& interval, const timer_sinkfunc_t& cb, const UINT64& trigger_clock);
 	BOOL	DelTimerHelper(const timer_id_t& tid);
 
 	std::map<timer_id_t, TimerItem>	_timer_wheel_forward;
@@ -154,7 +154,7 @@ public:
 	virtual ~CIdleSheduler();
 
 	timer_id_t	AllocNewIdle();
-	BOOL	SetIdle(const idle_id_t& iid, const idle_function_t& cb);
+	BOOL	SetIdle(const idle_id_t& iid, const idle_sinkfunc_t& cb);
 	void	KillIdle(const idle_id_t& iid);
 	BOOL	ExistIdle(const idle_id_t& iid);
 	UINT32	Trigger(std::shared_ptr<ThreadCtrlBlock> tcb);
@@ -164,7 +164,7 @@ private:
 	idle_id_t				_id_counter;
 	
 	std::map<idle_id_t, UINT64>			_idle_seq;
-	std::map<UINT64, idle_function_t>	_idle_cb;
+	std::map<UINT64, idle_sinkfunc_t>	_idle_cb;
 };
 
 class CThreadLocalProxy

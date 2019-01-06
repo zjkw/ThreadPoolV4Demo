@@ -44,10 +44,10 @@ namespace ThreadPoolV4
 	using thread_id_t = DWORD;	//原生线程id
 
 	using timer_id_t = UINT64;
-	using timer_function_t = std::function<void(const timer_id_t& tid)>;
+	using timer_sinkfunc_t = std::function<void(const timer_id_t& tid)>;
 
 	using idle_id_t = UINT64;
-	using idle_function_t = std::function<void(const idle_id_t& iid)>;
+	using idle_sinkfunc_t = std::function<void(const idle_id_t& iid)>;
 
 	enum TaskErrorCode
 	{
@@ -108,12 +108,12 @@ namespace ThreadPoolV4
 
 	//---------定时器和IDLE----------
 	TaskErrorCode	AllocTimer(timer_id_t& tid);
-	TaskErrorCode	StartTimer(const timer_id_t& tid, const UINT32& millisecond, const timer_function_t& cb, BOOL immediate = FALSE);
+	TaskErrorCode	StartTimer(const timer_id_t& tid, const UINT32& millisecond, const timer_sinkfunc_t& cb, BOOL immediate = FALSE);
 	TaskErrorCode	StopTimer(const timer_id_t& tid);
 	TaskErrorCode	ExistTimer(const timer_id_t& tid, BOOL& exist);
 
 	TaskErrorCode	AllocIdle(idle_id_t& iid);
-	TaskErrorCode	StartIdle(const idle_id_t& iid, const idle_function_t& cb);
+	TaskErrorCode	StartIdle(const idle_id_t& iid, const idle_sinkfunc_t& cb);
 	TaskErrorCode	StopIdle(const idle_id_t& iid);
 	TaskErrorCode	ExistIdle(const idle_id_t& iid, BOOL& exist);
 
@@ -127,11 +127,11 @@ namespace ThreadPoolV4
 		BOOL Start(UINT32 millisecond, BOOL immediate = FALSE);
 		void Stop();
 		BOOL IsActive();
-		void SetCallBack(const timer_function_t& cb);
+		void SetCallBack(const timer_sinkfunc_t& cb);
 
 	protected:
 		timer_id_t			_timer_id;
-		timer_function_t	_cb;
+		timer_sinkfunc_t	_cb;
 		task_id_t			_belongs_task_id;
 
 		void	OnTimer(const timer_id_t& tid);
@@ -145,11 +145,11 @@ namespace ThreadPoolV4
 		BOOL Start();
 		void Stop();
 		BOOL IsActive();
-		void SetCallBack(const idle_function_t& cb);
+		void SetCallBack(const idle_sinkfunc_t& cb);
 
 	protected:
 		idle_id_t			_idle_id;
-		idle_function_t		_cb;
+		idle_sinkfunc_t		_cb;
 		task_id_t			_belongs_task_id;
 
 		void	OnIdle(const idle_id_t& iid);
