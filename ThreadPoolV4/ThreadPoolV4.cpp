@@ -1,5 +1,5 @@
 #include "stdafx.h"
-#include <assert.h>
+#include <atlbase.h>
 #include <map>
 #include "ThreadInnerDef.h"
 #include "ThreadPoolV4Imp.h"
@@ -24,7 +24,7 @@ task_id_t	CThreadLocalProxy::CreateIfInvalid()
 			TCHAR name[64];
 			_sntprintf_s(name, _countof(name), _T("%lld"), _id);
 			TaskErrorCode tec = tixSetTaskName(_id, name);
-			assert(tec == TEC_SUCCEED);
+			ATLASSERT(tec == TEC_SUCCEED);
 		}
 	}
 	if (!_tcb)
@@ -95,7 +95,7 @@ TaskErrorCode CThreadLocalProxy::DispatchMsg(size_t& count)
 	{
 		return TEC_ALLOC_FAILED;
 	}
-	assert(_tcb);
+	ATLASSERT(_tcb);
 
 	std::vector<task_msgline_t> ar;
 	TaskErrorCode err = tixFetchMsgList(id, ar);
@@ -151,13 +151,13 @@ void	CThreadLocalProxy::Reset(const task_id_t& id, std::shared_ptr<ThreadCtrlBlo
 	TaskErrorCode tec = tixGetTaskName(_id, name);
 	if (tec == TEC_SUCCEED)
 	{
-		assert(!name.empty());
+		ATLASSERT(!name.empty());
 		if (name.empty())
 		{
 			TCHAR sz[64];
 			_sntprintf_s(sz, _countof(sz), _T("%lld"), _id);
 			tec = tixSetTaskName(_id, sz);
-			assert(tec == TEC_SUCCEED);
+			ATLASSERT(tec == TEC_SUCCEED);
 		}
 	}
 	else if (tec == TEC_NOT_EXIST)
@@ -165,11 +165,11 @@ void	CThreadLocalProxy::Reset(const task_id_t& id, std::shared_ptr<ThreadCtrlBlo
 		TCHAR sz[64];
 		_sntprintf_s(sz, _countof(sz), _T("%lld"), _id);
 		tec = tixSetTaskName(_id, sz);
-		assert(tec == TEC_SUCCEED);
+		ATLASSERT(tec == TEC_SUCCEED);
 	}
 	else
 	{
-		assert(false);
+		ATLASSERT(FALSE);
 	}
 }
 
@@ -572,15 +572,20 @@ TaskErrorCode	ThreadPoolV4::ExistIdle(const idle_id_t& iid, BOOL& exist)
 ThreadPoolV4::CTaskTimerHelper::CTaskTimerHelper()
 	: _timer_id(0), _cb(nullptr)
 {
+	_belongs_task_id = GetCurrentTaskID();
 }
 
 ThreadPoolV4::CTaskTimerHelper::~CTaskTimerHelper()
 {
+	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
+
 	Stop();
 }
 
 BOOL ThreadPoolV4::CTaskTimerHelper::Start(UINT32 millisecond, BOOL immediate/* = FALSE*/)
 {
+	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
+
 	if (!_timer_id)
 	{
 		timer_id_t tid = 0;
@@ -603,6 +608,8 @@ BOOL ThreadPoolV4::CTaskTimerHelper::Start(UINT32 millisecond, BOOL immediate/* 
 
 void ThreadPoolV4::CTaskTimerHelper::Stop()
 {
+	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
+
 	if (!_timer_id)
 	{
 		TaskErrorCode	tec = StopTimer(_timer_id);
@@ -617,6 +624,8 @@ void ThreadPoolV4::CTaskTimerHelper::Stop()
 
 BOOL ThreadPoolV4::CTaskTimerHelper::IsActive()
 {
+	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
+
 	BOOL exist = FALSE;
 	if (!_timer_id)
 	{
@@ -632,12 +641,16 @@ BOOL ThreadPoolV4::CTaskTimerHelper::IsActive()
 
 void ThreadPoolV4::CTaskTimerHelper::SetCallBack(const timer_function_t& cb)
 {
+	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
+
 	_cb = cb;
 }
 
 void ThreadPoolV4::CTaskTimerHelper::OnTimer(const timer_id_t& tid)
 {
-	assert(_cb);
+	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
+
+	ATLASSERT(_cb);
 	if (_cb)
 	{
 		_cb(tid);
@@ -647,15 +660,20 @@ void ThreadPoolV4::CTaskTimerHelper::OnTimer(const timer_id_t& tid)
 ThreadPoolV4::CTaskIdleHelper::CTaskIdleHelper()
 	: _idle_id(0), _cb(nullptr)
 {
+	_belongs_task_id = GetCurrentTaskID();
 }
 
 ThreadPoolV4::CTaskIdleHelper::~CTaskIdleHelper()
 {
+	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
+
 	Stop();
 }
 
 BOOL ThreadPoolV4::CTaskIdleHelper::Start()
 {
+	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
+
 	if (!_idle_id)
 	{
 		idle_id_t iid = 0;
@@ -678,6 +696,8 @@ BOOL ThreadPoolV4::CTaskIdleHelper::Start()
 
 void ThreadPoolV4::CTaskIdleHelper::Stop()
 {
+	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
+
 	if (!_idle_id)
 	{
 		TaskErrorCode	tec = StopIdle(_idle_id);
@@ -692,6 +712,8 @@ void ThreadPoolV4::CTaskIdleHelper::Stop()
 
 BOOL ThreadPoolV4::CTaskIdleHelper::IsActive()
 {
+	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
+
 	BOOL exist = FALSE;
 	if (!_idle_id)
 	{
@@ -707,13 +729,17 @@ BOOL ThreadPoolV4::CTaskIdleHelper::IsActive()
 
 void ThreadPoolV4::CTaskIdleHelper::SetCallBack(const idle_function_t& cb)
 {
+	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
+
 	_cb = cb;
 }
 
 
 void	ThreadPoolV4::CTaskIdleHelper::OnIdle(const idle_id_t& iid)
 {
-	assert(_cb);
+	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
+
+	ATLASSERT(_cb);
 	if (_cb)
 	{
 		_cb(iid);

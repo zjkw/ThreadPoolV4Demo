@@ -117,8 +117,7 @@ namespace ThreadPoolV4
 	TaskErrorCode	StopIdle(const idle_id_t& iid);
 	TaskErrorCode	ExistIdle(const idle_id_t& iid, BOOL& exist);
 
-	//TimerHelper构造函数不会作为与实际线程上下文关联的入口点，因为某些地方构造对象在一个线程，使用在另外一个线程，非构造函数如Start才真正与线程挂钩，
-	//虽然很不推荐跨线程使用，但用户场景千差万别，所以务必清晰这里的要求
+	//为了避免错误，我们要求对象生命期必须在其背景任务/线程生命期内
 	class CTaskTimerHelper
 	{
 	public:
@@ -133,7 +132,7 @@ namespace ThreadPoolV4
 	protected:
 		timer_id_t			_timer_id;
 		timer_function_t	_cb;
-		std::wstring		_name;
+		task_id_t			_belongs_task_id;
 
 		void	OnTimer(const timer_id_t& tid);
 	};
@@ -151,6 +150,7 @@ namespace ThreadPoolV4
 	protected:
 		idle_id_t			_idle_id;
 		idle_function_t		_cb;
+		task_id_t			_belongs_task_id;
 
 		void	OnIdle(const idle_id_t& iid);
 	};

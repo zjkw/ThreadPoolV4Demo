@@ -1,5 +1,5 @@
 #include "stdafx.h"
-#include <assert.h>
+#include <atlbase.h>
 #include <map>
 #include "ThreadPoolV4Imp.h"
 
@@ -122,7 +122,7 @@ static TaskErrorCode StaticSetTaskName_InLock(const task_id_t& id, const task_na
 		_static_table[id] = st;
 		
 		it = _static_table.find(id);
-		assert(it != _static_table.end());
+		ATLASSERT(it != _static_table.end());
 	}
 
 	it->second.name = name;
@@ -191,8 +191,8 @@ static void	ManagedThreadRoutine()
 			}
 		}
 	}
-	assert(cls_ptr);
-	assert(thread_item_ptr);
+	ATLASSERT(cls_ptr);
+	ATLASSERT(thread_item_ptr);
 
 	if (thread_item_ptr)
 	{
@@ -379,10 +379,10 @@ static TaskErrorCode PoolDelManagedTask_InLock(const task_id_t& call_id, const t
 				{
 					if (call_id == target_id)
 					{
-						assert(false);
+						ATLASSERT(FALSE);
 						return TEC_MANAGED_DELETE_SELF;
 					}
-					assert(it3->second.thread_item_ptr);
+					ATLASSERT(it3->second.thread_item_ptr);
 					it3->second.thread_item_ptr->thread_ctrlblock->SetWaitExit();
 
 					return TEC_SUCCEED;
@@ -600,7 +600,7 @@ TaskErrorCode			tixClearManagedTask(const task_id_t& call_id)
 			{
 				if (call_id == it2->first)
 				{
-					assert(false);
+					ATLASSERT(FALSE);
 					return TEC_MANAGED_DELETE_SELF;
 				}
 			}
