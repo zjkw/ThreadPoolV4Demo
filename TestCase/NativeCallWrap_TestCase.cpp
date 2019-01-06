@@ -26,10 +26,10 @@ void	CNativeCallWrap_TestCase::DoTest()
 	_caller_thread = std::make_shared<std::thread>(&CNativeCallWrap_TestCase::NativeCallerRoutinue, this);
 }
 
-void	CNativeCallWrap_TestCase::WorkRoutine(const task_id_t& self_id, std::shared_ptr<ThreadCtrlBlock> tcb, const task_param_t& param)
+void	CNativeCallWrap_TestCase::WorkRoutine(const task_id_t& self_id, const task_param_t& param)
 {
 	//5，Wrap线程注册任务函数，用于接收对应任务
-	ThreadErrorCode tec = RegMsgSink(CMMNO_FIBON_REQ, std::bind(&CNativeCallWrap_TestCase::WorkFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+	TaskErrorCode tec = RegMsgSink(CMMNO_FIBON_REQ, std::bind(&CNativeCallWrap_TestCase::WorkFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 
 	//6，消息Pump运作
 	RunBaseLoop();
@@ -57,7 +57,7 @@ void	CNativeCallWrap_TestCase::NativeCallerRoutinue()
 {
 	//2，Native线程创建Wrap(托管)线程
 	task_id_t id = 0;
-	ThreadErrorCode tec = AddManagedTask(_T("Test"), _T("Febri"), nullptr, std::bind(&CNativeCallWrap_TestCase::WorkRoutine, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), id);
+	TaskErrorCode tec = AddManagedTask(_T("Test"), _T("Febri"), nullptr, std::bind(&CNativeCallWrap_TestCase::WorkRoutine, this, std::placeholders::_1, std::placeholders::_2), id);
 	if (tec == TEC_SUCCEED)
 	{
 		//3, Native线程注册结果函数，用于获取Wrap线程结果	
@@ -86,7 +86,7 @@ void	CNativeCallWrap_TestCase::CallFunc_FibonMathSink(const task_id_t& sender_id
 	printf("Fibon 1000 value: %lld\n", s);
 }
 
-void	CNativeCallWrap_TestCase::CallFunc_FibonMathEcho(const task_id_t& receiver_id, const task_cmd_t& cmd, const task_data_t& data, const ThreadErrorCode& err)	//发送者发送后，对于发送结果的回调通知
+void	CNativeCallWrap_TestCase::CallFunc_FibonMathEcho(const task_id_t& receiver_id, const task_cmd_t& cmd, const task_data_t& data, const TaskErrorCode& err)	//发送者发送后，对于发送结果的回调通知
 {
 	//8，Native线程的本次请求结果回调，只是看任务是否异常
 }

@@ -23,7 +23,7 @@ struct managed_task_t
 	task_cls_t		cls;
 	task_param_t	param;
 	task_routinefunc_t routine;
-	managed_thread_t*		thread_item_ptr;	//当TTS_ACTIVE时候有效，标明是哪个线程
+	managed_thread_t*		thread_item_ptr;	//当TWS_ACTIVE时候有效，标明是哪个线程
 
 	managed_task_t() : thread_item_ptr(nullptr) {}
 };
@@ -40,18 +40,18 @@ struct managed_pool_t
 	managed_pool_t() : thread_num(DEFAULT_THREAD_NUM_BY_CLS), unhandle_msg_timeout(0), thread_init_finish(FALSE) {}
 };
 
-static std::mutex													_mutex;
-static std::condition_variable										_cond;
+static std::mutex															_mutex;
+static std::condition_variable												_cond;
 //静态表
-static BOOL															_exit_flag = FALSE;//退出状态标识，设置后表示只能减不能加
-static task_id_t													_cursor = task_id_null;
-static std::map<task_id_t, task_static_t>							_static_table;
+static BOOL																	_exit_flag = FALSE;//退出状态标识，设置后表示只能减不能加
+static task_id_t															_cursor = task_id_null;
+static std::map<task_id_t, task_static_t>									_static_table;
 //消息表
-static std::map<task_id_t, std::vector<task_msgline_t>>				_msg_table;
+static std::map<task_id_t, std::vector<task_msgline_t>>						_msg_table;
 //托管任务/线程池
 static std::map<std::wstring, std::shared_ptr<managed_pool_t>, StrCaseCmp>	_managed_cls_table;
-static std::map<task_id_t, std::wstring>							_managed_task_index;
-static std::map<thread_id_t, std::wstring>							_managed_thread_index;
+static std::map<task_id_t, std::wstring>									_managed_task_index;
+static std::map<thread_id_t, std::wstring>									_managed_thread_index;
 
 ///////////////静态表辅助管理
 static task_id_t		StaticAllocTaskID_InLock()
@@ -69,7 +69,7 @@ static BOOL			StaticExistTask_InLock(const task_id_t& id)
 	return _static_table.find(id) != _static_table.end();
 }
 
-static ThreadErrorCode StaticSetTaskName_InLock(const task_id_t& id, const task_name_t& name)
+static TaskErrorCode StaticSetTaskName_InLock(const task_id_t& id, const task_name_t& name)
 {
 	if (name.empty())
 	{
@@ -129,7 +129,7 @@ static ThreadErrorCode StaticSetTaskName_InLock(const task_id_t& id, const task_
 	return TEC_SUCCEED;
 }
 
-static ThreadErrorCode StaticGetTaskName_InLock(const task_id_t& id, task_name_t& name)
+static TaskErrorCode StaticGetTaskName_InLock(const task_id_t& id, task_name_t& name)
 {
 	std::map<task_id_t, task_static_t>::iterator it = _static_table.find(id);
 	if (it == _static_table.end())
@@ -141,7 +141,7 @@ static ThreadErrorCode StaticGetTaskName_InLock(const task_id_t& id, task_name_t
 	return TEC_SUCCEED;
 }
 
-static ThreadErrorCode StaticGetTaskByName_InLock(const task_name_t& name, task_id_t& id)
+static TaskErrorCode StaticGetTaskByName_InLock(const task_name_t& name, task_id_t& id)
 {
 	for (std::map<task_id_t, task_static_t>::iterator it = _static_table.begin(); it != _static_table.end(); it++)
 	{
@@ -241,7 +241,7 @@ static void	ManagedThreadRoutine()
 			{
 				//
 				TlsProxyReset_NoLock(first, thread_item_ptr->thread_ctrlblock);
-				second.routine(first, thread_item_ptr->thread_ctrlblock, second.param);
+				second.routine(first, second.param);
 
 				std::unique_lock <std::mutex> lck(_mutex);
 				cls_ptr->active_tasks.erase(first);
@@ -315,7 +315,7 @@ static BOOL CreatePoolIfNotExist_InLock(const task_cls_t& cls, const UINT16& thr
 	return TRUE;
 }
 
-static ThreadErrorCode PoolAddManagedTask_InLock(const task_cls_t& cls, const task_id_t& id, const task_param_t& param, const task_routinefunc_t& routine)
+static TaskErrorCode PoolAddManagedTask_InLock(const task_cls_t& cls, const task_id_t& id, const task_param_t& param, const task_routinefunc_t& routine)
 {
 	task_cls_t cls_std = GetStdCls(cls);
 
@@ -350,7 +350,7 @@ static ThreadErrorCode PoolAddManagedTask_InLock(const task_cls_t& cls, const ta
 }
 
 
-static ThreadErrorCode PoolDelManagedTask_InLock(const task_id_t& call_id, const task_id_t& target_id)
+static TaskErrorCode PoolDelManagedTask_InLock(const task_id_t& call_id, const task_id_t& target_id)
 {
 	//检查
 
@@ -416,7 +416,7 @@ void	tixDeleteUnmanagedTask(const task_id_t& id)
 	//托管任务
 }
 
-ThreadErrorCode tixPostMsg(const task_id_t& sender_id, const task_id_t& receiver_id, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags/* = task_flag_null*/)
+TaskErrorCode tixPostMsg(const task_id_t& sender_id, const task_id_t& receiver_id, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags/* = task_flag_null*/)
 {
 	std::unique_lock <std::mutex> lck(_mutex);
 
@@ -424,32 +424,85 @@ ThreadErrorCode tixPostMsg(const task_id_t& sender_id, const task_id_t& receiver
 	{
 		return TEC_EXIT_STATE;
 	}
-	//简单检查，由于多个对象没有在同一把锁下执行同步，可能前后会有不一致的情况，比如当执行到msg_ptr->PostMsg时候，可能receiver_id被删除了
+
+	//检查发送者，无需检查接收者是否存在，tbd超时
 	if (!StaticExistTask_InLock(sender_id))
 	{
 		return TEC_INVALID_THREADID;
 	}
 
-	std::map<task_id_t, std::vector<task_msgline_t>>::iterator it = _msg_table.find(receiver_id);
-	if (it == _msg_table.end())
+	std::vector<task_id_t>	receiver_list;
+	if (receiver_id == task_id_null)
 	{
-		std::vector<task_msgline_t> v;
-		_msg_table[receiver_id] = v;
-		it = _msg_table.find(receiver_id);
 	}
-	task_msgline_t	line;
-	line.stamp = GetTickCount64();
-	line.sender_id = sender_id;
-	line.receiver_id = receiver_id;
-	line.cmd = cmd;
-	line.data = data;
+	else if (receiver_id == task_id_self)
+	{
+		receiver_list.push_back(sender_id);
+	}
+	else if (receiver_id == task_id_broadcast_allothers)
+	{
+		for (std::map<task_id_t, task_static_t>::iterator it = _static_table.begin(); it != _static_table.end(); it++)
+		{
+			if (it->first != sender_id)
+			{
+				receiver_list.push_back(it->first);
+			}
+		}
+	}
+	else if (receiver_id == task_id_broadcast_sameclsothers)
+	{
+		//注意: 只有托管任务才有类别
+		std::map<task_id_t, std::wstring>::iterator it = _managed_task_index.find(sender_id);
+		if (it != _managed_task_index.end())
+		{
+			std::map<std::wstring, std::shared_ptr<managed_pool_t>, StrCaseCmp>::iterator it2 = _managed_cls_table.find(it->second);
+			if (it2 != _managed_cls_table.end())
+			{
+				for (std::map<task_id_t, managed_task_t>::iterator it3 = it2->second->active_tasks.begin(); it3 != it2->second->active_tasks.end(); it3++)
+				{
+					if (it3->first != sender_id)
+					{
+						receiver_list.push_back(it3->first);
+					}
+				}
+				for (std::map<task_id_t, managed_task_t>::iterator it3 = it2->second->wait_tasks.begin(); it3 != it2->second->wait_tasks.end(); it3++)
+				{
+					if (it3->first != sender_id)
+					{
+						receiver_list.push_back(it3->first);
+					}
+				}
+			}
+		}
+	}
+	else
+	{
+		receiver_list.push_back(receiver_id);
+	}
 
-	it->second.push_back(line);
+	for (std::vector<task_id_t>::iterator it = receiver_list.begin(); it != receiver_list.end(); it++)
+	{
+		std::map<task_id_t, std::vector<task_msgline_t>>::iterator it2 = _msg_table.find(*it);
+		if (it2 == _msg_table.end())
+		{
+			std::vector<task_msgline_t> v;
+			_msg_table[*it] = v;
+			it2 = _msg_table.find(*it);
+		}
+		task_msgline_t	line;
+		line.stamp = GetTickCount64();
+		line.sender_id = sender_id;
+		line.receiver_id = *it;
+		line.cmd = cmd;
+		line.data = data;
 
+		it2->second.push_back(line);
+	}
+	
 	return TEC_SUCCEED;
 }
 
-ThreadErrorCode tixFetchMsgList(const task_id_t& id, std::vector<task_msgline_t>& array)
+TaskErrorCode tixFetchMsgList(const task_id_t& id, std::vector<task_msgline_t>& array)
 {
 	std::unique_lock <std::mutex> lck(_mutex);
 
@@ -478,7 +531,7 @@ ThreadErrorCode tixFetchMsgList(const task_id_t& id, std::vector<task_msgline_t>
 }
 
 //////////////////
-ThreadErrorCode	tixGetTaskState(const task_id_t& id, ThreadTaskState& state)
+TaskErrorCode	tixGetTaskState(const task_id_t& id, TaskWorkState& state)
 {
 	std::unique_lock <std::mutex> lck(_mutex);
 	if (_exit_flag)
@@ -490,7 +543,7 @@ ThreadErrorCode	tixGetTaskState(const task_id_t& id, ThreadTaskState& state)
 	{
 		return TEC_INVALID_THREADID;
 	}
-	state = TTS_ACTIVE;	//非托管任务会认为一直是TTS_ACTIVE
+	state = TWS_ACTIVE;	//非托管任务会认为一直是TWS_ACTIVE
 
 	std::map<task_id_t, std::wstring>::iterator it = _managed_task_index.find(id);
 	if (it != _managed_task_index.end())
@@ -501,14 +554,14 @@ ThreadErrorCode	tixGetTaskState(const task_id_t& id, ThreadTaskState& state)
 			std::map<task_id_t, managed_task_t>::iterator it3 = it2->second->wait_tasks.find(id);
 			if (it3 != it2->second->wait_tasks.end())
 			{
-				state = TTS_AWAIT;
+				state = TWS_AWAIT;
 			}
 			else
 			{
 				it3 = it2->second->active_tasks.find(id);
 				if (it3 != it2->second->active_tasks.end())
 				{
-					state = TTS_ACTIVE;
+					state = TWS_ACTIVE;
 				}
 			}
 		}
@@ -531,7 +584,7 @@ void			tixSetClsAttri(const task_cls_t& cls, const UINT16& thread_num, const UIN
 }
 
 //将会强制同步等待池中所有线程关闭
-ThreadErrorCode			tixClearManagedTask(const task_id_t& call_id)
+TaskErrorCode			tixClearManagedTask(const task_id_t& call_id)
 {
 	//1，置位, 因为需要等待，这意味着其他线程也能继续访问
 	{
@@ -582,19 +635,19 @@ ThreadErrorCode			tixClearManagedTask(const task_id_t& call_id)
 }
 
 //任务管理
-ThreadErrorCode tixSetTaskName(const task_id_t& id, const task_name_t& name)
+TaskErrorCode tixSetTaskName(const task_id_t& id, const task_name_t& name)
 {
 	std::unique_lock <std::mutex> lck(_mutex);
 	return StaticSetTaskName_InLock(id, name);
 }
 
-ThreadErrorCode tixGetTaskName(const task_id_t& id, task_name_t& name)
+TaskErrorCode tixGetTaskName(const task_id_t& id, task_name_t& name)
 {
 	std::unique_lock <std::mutex> lck(_mutex);
 	return StaticGetTaskName_InLock(id, name);
 }
 
-ThreadErrorCode tixAddManagedTask(const task_cls_t& cls, const task_name_t& name, const task_param_t& param, const task_routinefunc_t& routine, task_id_t& id)
+TaskErrorCode tixAddManagedTask(const task_cls_t& cls, const task_name_t& name, const task_param_t& param, const task_routinefunc_t& routine, task_id_t& id)
 {
 	std::unique_lock <std::mutex> lck(_mutex);
 	if (_exit_flag)
@@ -608,7 +661,7 @@ ThreadErrorCode tixAddManagedTask(const task_cls_t& cls, const task_name_t& name
 		return TEC_ALLOC_FAILED;
 	}
 
-	ThreadErrorCode tec = StaticSetTaskName_InLock(id, name);
+	TaskErrorCode tec = StaticSetTaskName_InLock(id, name);
 
 	if (TEC_SUCCEED == tec)
 	{
@@ -622,10 +675,10 @@ ThreadErrorCode tixAddManagedTask(const task_cls_t& cls, const task_name_t& name
 }
 																																									
 //是否等待目标关闭，需要明确的是如果自己关闭自己或关闭非托管线程，将会是强制改成异步																																									
-ThreadErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& target_id)
+TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& target_id)
 {
 	//删除任务无需检查是否设置_exit_flag，因为其是删除操作
-	ThreadErrorCode err = TEC_SUCCEED;
+	TaskErrorCode err = TEC_SUCCEED;
 
 	{
 		std::unique_lock <std::mutex> lck(_mutex);
@@ -657,7 +710,7 @@ ThreadErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& tar
 	return err;
 }
 
-ThreadErrorCode tixGetTaskByName(const task_name_t& name, task_id_t& id)
+TaskErrorCode tixGetTaskByName(const task_name_t& name, task_id_t& id)
 {
 	std::unique_lock <std::mutex> lck(_mutex);
 
@@ -665,7 +718,7 @@ ThreadErrorCode tixGetTaskByName(const task_name_t& name, task_id_t& id)
 }
 
 //Debug
-ThreadErrorCode tixPrintMeta(const task_id_t& id)
+TaskErrorCode tixPrintMeta()
 {
 	std::unique_lock <std::mutex> lck(_mutex);
 

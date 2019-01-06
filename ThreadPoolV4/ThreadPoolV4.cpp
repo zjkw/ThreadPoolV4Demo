@@ -23,13 +23,21 @@ task_id_t	CThreadLocalProxy::CreateIfInvalid()
 		{
 			TCHAR name[64];
 			_sntprintf_s(name, _countof(name), _T("%lld"), _id);
-			ThreadErrorCode tec = tixSetTaskName(_id, name);
+			TaskErrorCode tec = tixSetTaskName(_id, name);
 			assert(tec == TEC_SUCCEED);
 		}
 	}
 	if (!_tcb)
 	{
 		_tcb = std::make_shared<UnmanagedThreadCtrlBlock>(GetCurrentThreadId());
+	}
+	if (!_tws)
+	{
+		_tws = std::make_shared<CTimeWheelSheduler>();
+	}
+	if (!_dls)
+	{
+		_dls = std::make_shared<CIdleSheduler>();
 	}
 
 	return _id;
@@ -43,7 +51,7 @@ void	CThreadLocalProxy::DeleteIfValid()
 	}
 }
 
-ThreadErrorCode CThreadLocalProxy::RegRubbishMsgSink(const task_sinkfunc_t& sinkfunc)	//Ã»ÓÐ½ÓÊÕÆ÷µÄÏûÏ¢½øÈëÀ¬»øÏä
+TaskErrorCode CThreadLocalProxy::RegRubbishMsgSink(const task_sinkfunc_t& sinkfunc)	//Ã»ÓÐ½ÓÊÕÆ÷µÄÏûÏ¢½øÈëÀ¬»øÏä
 {
 	//·¢ËÍÕßµÄTLS¿ÉÄÜ»¹Ã»³õÊ¼»¯£¬Ó¦¸ÃÏÈ½¨Á¢ÍøÂç
 	task_id_t id = CreateIfInvalid();
@@ -55,13 +63,13 @@ ThreadErrorCode CThreadLocalProxy::RegRubbishMsgSink(const task_sinkfunc_t& sink
 	return TEC_SUCCEED;
 }
 
-ThreadErrorCode CThreadLocalProxy::UnregRubbishMsgSink()
+TaskErrorCode CThreadLocalProxy::UnregRubbishMsgSink()
 {
 	_rubbish_sink = nullptr;
 	return TEC_SUCCEED;
 }
 
-ThreadErrorCode CThreadLocalProxy::RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc)
+TaskErrorCode CThreadLocalProxy::RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc)
 {
 	//·¢ËÍÕßµÄTLS¿ÉÄÜ»¹Ã»³õÊ¼»¯£¬Ó¦¸ÃÏÈ½¨Á¢ÍøÂç
 	task_id_t id = CreateIfInvalid();
@@ -73,13 +81,13 @@ ThreadErrorCode CThreadLocalProxy::RegMsgSink(const task_cmd_t& cmd, const task_
 	return TEC_SUCCEED;
 }
 
-ThreadErrorCode CThreadLocalProxy::UnregMsgSink(const task_cmd_t& cmd)
+TaskErrorCode CThreadLocalProxy::UnregMsgSink(const task_cmd_t& cmd)
 {
 	_cmd_table.erase(cmd);
 	return TEC_SUCCEED;
 }
 
-ThreadErrorCode CThreadLocalProxy::DispatchMsg(size_t& count)
+TaskErrorCode CThreadLocalProxy::DispatchMsg(size_t& count)
 {
 	//·¢ËÍÕßµÄTLS¿ÉÄÜ»¹Ã»³õÊ¼»¯£¬Ó¦¸ÃÏÈ½¨Á¢ÍøÂç
 	task_id_t id = CreateIfInvalid();
@@ -90,7 +98,7 @@ ThreadErrorCode CThreadLocalProxy::DispatchMsg(size_t& count)
 	assert(_tcb);
 
 	std::vector<task_msgline_t> ar;
-	ThreadErrorCode err = tixFetchMsgList(id, ar);
+	TaskErrorCode err = tixFetchMsgList(id, ar);
 	if (err != TEC_SUCCEED)
 	{
 		return err;
@@ -136,8 +144,11 @@ void	CThreadLocalProxy::Reset(const task_id_t& id, std::shared_ptr<ThreadCtrlBlo
 	_tcb = tcb;
 	_managed = TRUE;
 
+	_tws = std::make_shared<CTimeWheelSheduler>();
+	_dls = std::make_shared<CIdleSheduler>();
+
 	task_name_t name;
-	ThreadErrorCode tec = tixGetTaskName(_id, name);
+	TaskErrorCode tec = tixGetTaskName(_id, name);
 	if (tec == TEC_SUCCEED)
 	{
 		assert(!name.empty());
@@ -167,13 +178,23 @@ std::shared_ptr<ThreadCtrlBlock>	CThreadLocalProxy::GetThreadCtrlBlock()
 	return _tcb;
 }
 
+std::shared_ptr<CTimeWheelSheduler>	CThreadLocalProxy::GetTimeWheelSheduler()
+{
+	return _tws;
+}
+
+std::shared_ptr<CIdleSheduler>		CThreadLocalProxy::GetIdleSheduler()
+{
+	return _dls;
+}
+
 thread_local CThreadLocalProxy	_tls_proxy;
 
 //Ö»ÓÐµ±Ç°Ïß³Ì»áÊ¹ÓÃµ½£¬ËùÓÐÎÞÐè¼ÓËø
 
 ////////////////////////
 //Õë¶Ô·¢ËÍÕß£¬ÔÊÐí×Ô¼º¸ø×Ô¼º·¢
-ThreadErrorCode ThreadPoolV4::PostMsg(const task_id_t& target_id, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags/* = task_flag_null*/, const task_echofunc_t& echofunc/* = nullptr*/)//target_idÎª0±íÊ¾¹ã²¥
+TaskErrorCode ThreadPoolV4::PostMsg(const task_id_t& target_id, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags/* = task_flag_null*/, const task_echofunc_t& echofunc/* = nullptr*/)//target_idÎª0±íÊ¾¹ã²¥
 {
 	//²ÎÊý¼ì²é
 
@@ -185,7 +206,7 @@ ThreadErrorCode ThreadPoolV4::PostMsg(const task_id_t& target_id, const task_cmd
 	}
 
 	//Ö´ÐÐÕæÕý·¢ËÍ²Ù×÷
-	ThreadErrorCode tec = tixPostMsg(id, target_id, cmd, data, flags);
+	TaskErrorCode tec = tixPostMsg(id, target_id, cmd, data, flags);
 	if (echofunc)
 	{
 		echofunc(target_id, cmd, data, tec);
@@ -193,7 +214,7 @@ ThreadErrorCode ThreadPoolV4::PostMsg(const task_id_t& target_id, const task_cmd
 	return tec;
 }
 
-ThreadErrorCode ThreadPoolV4::PostMsg(const task_name_t& target_name, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags/* = task_flag_null*/, const task_echofunc_t& echofunc/* = nullptr*/)//target_idÎª0±íÊ¾¹ã²¥
+TaskErrorCode ThreadPoolV4::PostMsg(const task_name_t& target_name, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags/* = task_flag_null*/, const task_echofunc_t& echofunc/* = nullptr*/)//target_idÎª0±íÊ¾¹ã²¥
 {
 	//²ÎÊý¼ì²é
 
@@ -205,7 +226,7 @@ ThreadErrorCode ThreadPoolV4::PostMsg(const task_name_t& target_name, const task
 	}
 
 	task_id_t target_id = task_id_null;
-	ThreadErrorCode tec = GetTaskByName(target_name, target_id);
+	TaskErrorCode tec = GetTaskByName(target_name, target_id);
 	if (tec == TEC_SUCCEED)
 	{
 		//Ö´ÐÐÕæÕý·¢ËÍ²Ù×÷
@@ -219,38 +240,38 @@ ThreadErrorCode ThreadPoolV4::PostMsg(const task_name_t& target_name, const task
 	return tec;
 }
 //Õë¶Ô½ÓÊÕÕß
-ThreadErrorCode ThreadPoolV4::RegRubbishMsgSink(const task_sinkfunc_t& sinkfunc)	//Ã»ÓÐ½ÓÊÕÆ÷µÄÏûÏ¢½øÈëÀ¬»øÏä
+TaskErrorCode ThreadPoolV4::RegRubbishMsgSink(const task_sinkfunc_t& sinkfunc)	//Ã»ÓÐ½ÓÊÕÆ÷µÄÏûÏ¢½øÈëÀ¬»øÏä
 {
 	return _tls_proxy.RegRubbishMsgSink(sinkfunc);
 }
 
-ThreadErrorCode ThreadPoolV4::UnregRubbishMsgSink()
+TaskErrorCode ThreadPoolV4::UnregRubbishMsgSink()
 {
 	return _tls_proxy.UnregRubbishMsgSink();
 }
 
-ThreadErrorCode ThreadPoolV4::RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc)
+TaskErrorCode ThreadPoolV4::RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc)
 {
 	return _tls_proxy.RegMsgSink(cmd, sinkfunc);
 }
 
-ThreadErrorCode ThreadPoolV4::UnregMsgSink(const task_cmd_t& cmd)
+TaskErrorCode ThreadPoolV4::UnregMsgSink(const task_cmd_t& cmd)
 {
 	return _tls_proxy.UnregMsgSink(cmd);
 }
 
-ThreadErrorCode ThreadPoolV4::DispatchMsg(size_t& count)
+TaskErrorCode ThreadPoolV4::DispatchMsg(size_t& count)
 {
 	return 	_tls_proxy.DispatchMsg(count);
 }
 
 //Ïß³Ì³Ø
-void			ThreadPoolV4::SetClsAttri(const task_cls_t& cls, const UINT16& thread_num, const UINT32& unhandle_msg_timeout)//µ÷½ÚÏß³ÌÊýÁ¿
+void			ThreadPoolV4::SetManagedClsAttri(const task_cls_t& cls, const UINT16& thread_num, const UINT32& unhandle_msg_timeout)//µ÷½ÚÏß³ÌÊýÁ¿
 {
 	tixSetClsAttri(cls, thread_num, unhandle_msg_timeout);
 }
 
-ThreadErrorCode ThreadPoolV4::ClearManagedTask()//½«»áÇ¿ÖÆÍ¬²½µÈ´ý³ØÖÐËùÓÐÏß³Ì¹Ø±Õ
+TaskErrorCode ThreadPoolV4::ClearManagedTask()//½«»áÇ¿ÖÆÍ¬²½µÈ´ý³ØÖÐËùÓÐÏß³Ì¹Ø±Õ
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
@@ -271,7 +292,7 @@ void	TlsProxyReset_NoLock(const task_id_t&	id, std::shared_ptr<ThreadCtrlBlock> 
 	_tls_proxy.Reset(id, tcb);
 }
 
-ThreadErrorCode ThreadPoolV4::SetCurrentName(const task_name_t& name)//ÒòÎªÍÐ¹ÜÏß³Ì»áÔÚAddManagedTaskÌá¹©Ãû×ÖÄÜÁ¦£¬ÕâÀïÒ²Ë³±ã¸ø·ÇÍÐ¹ÜÏß³ÌÒ»¸ö»ú»á£ºÔö¼Ó±ðÃûÒÔ±ã²éÑ¯
+TaskErrorCode ThreadPoolV4::SetCurrentName(const task_name_t& name)//ÒòÎªÍÐ¹ÜÏß³Ì»áÔÚAddManagedTaskÌá¹©Ãû×ÖÄÜÁ¦£¬ÕâÀïÒ²Ë³±ã¸ø·ÇÍÐ¹ÜÏß³ÌÒ»¸ö»ú»á£ºÔö¼Ó±ðÃûÒÔ±ã²éÑ¯
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
@@ -281,7 +302,7 @@ ThreadErrorCode ThreadPoolV4::SetCurrentName(const task_name_t& name)//ÒòÎªÍÐ¹ÜÏ
 	return 	tixSetTaskName(id, name);
 }
 
-ThreadErrorCode ThreadPoolV4::RunBaseLoop()
+TaskErrorCode ThreadPoolV4::RunBaseLoop()
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
@@ -289,27 +310,40 @@ ThreadErrorCode ThreadPoolV4::RunBaseLoop()
 		return TEC_ALLOC_FAILED;
 	}
 	std::shared_ptr<ThreadCtrlBlock>	tcb = _tls_proxy.GetThreadCtrlBlock();
-
+	std::shared_ptr<CTimeWheelSheduler>	tws = _tls_proxy.GetTimeWheelSheduler();
+	std::shared_ptr<CIdleSheduler>		dls = _tls_proxy.GetIdleSheduler();
+	
 	while (!tcb->IsWaitExit())
 	{
+		BOOL has_business = FALSE;
+
 		size_t count = 0;
 		if (DispatchMsg(count) == TEC_SUCCEED)
 		{
 			if (count)
 			{
-				Sleep(10);
+				has_business = TRUE;
 			}
 		}
-		else
+		
+		if (!has_business)
 		{
-			Sleep(10);
+			UINT32 timer_count = tws->Trigger(tcb);
+			if (!timer_count)
+			{
+				UINT32 idle_count = dls->Trigger(tcb);
+				if (!idle_count)
+				{
+					Sleep(10);
+				}
+			}
 		}
 	}
 
 	return TEC_SUCCEED;
 }
 
-ThreadErrorCode ThreadPoolV4::RunWinLoop()
+TaskErrorCode ThreadPoolV4::RunWinLoop()
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
@@ -317,6 +351,8 @@ ThreadErrorCode ThreadPoolV4::RunWinLoop()
 		return TEC_ALLOC_FAILED;
 	}
 	std::shared_ptr<ThreadCtrlBlock>	tcb = _tls_proxy.GetThreadCtrlBlock();
+	std::shared_ptr<CTimeWheelSheduler>	tws = _tls_proxy.GetTimeWheelSheduler();
+	std::shared_ptr<CIdleSheduler>		dls = _tls_proxy.GetIdleSheduler();
 
 	while (!tcb->IsWaitExit())
 	{
@@ -344,16 +380,24 @@ ThreadErrorCode ThreadPoolV4::RunWinLoop()
 			has_business = TRUE;
 		}
 		
-		if(!has_business)
+		if (!has_business)
 		{
-			Sleep(10);
+			UINT32 timer_count = tws->Trigger(tcb);
+			if (!timer_count)
+			{
+				UINT32 idle_count = dls->Trigger(tcb);
+				if (!idle_count)
+				{
+					Sleep(10);
+				}
+			}
 		}
 	}
 
 	return TEC_SUCCEED;
 }
 
-ThreadErrorCode ThreadPoolV4::ExitLoop()
+TaskErrorCode ThreadPoolV4::SetExitLoop()
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
@@ -367,12 +411,27 @@ ThreadErrorCode ThreadPoolV4::ExitLoop()
 	return TEC_SUCCEED;
 }
 
+TaskErrorCode ThreadPoolV4::IsExitLoop(BOOL& enable)
+{
+	task_id_t id = _tls_proxy.CreateIfInvalid();
+	if (id == task_id_null)
+	{
+		return TEC_ALLOC_FAILED;
+	}
+	std::shared_ptr<ThreadCtrlBlock>	tcb = _tls_proxy.GetThreadCtrlBlock();
+
+	enable = tcb->IsWaitExit();
+
+	return TEC_SUCCEED;
+}
+
 //ÈÎÎñ¹ÜÀí
-ThreadErrorCode ThreadPoolV4::AddManagedTask(const task_cls_t& cls, const task_name_t& name, const task_param_t& param, const task_routinefunc_t& routine, task_id_t& id)	//µ÷½ÚÈÎÎñ
+TaskErrorCode ThreadPoolV4::AddManagedTask(const task_cls_t& cls, const task_name_t& name, const task_param_t& param, const task_routinefunc_t& routine, task_id_t& id)	//µ÷½ÚÈÎÎñ
 {
 	return 	tixAddManagedTask(cls, name, param, routine, id);
 }
-ThreadErrorCode ThreadPoolV4::DelManagedTask(const task_id_t& id)//ÊÇ·ñµÈ´ýÄ¿±ê¹Ø±Õ£¬ÐèÒªÃ÷È·µÄÊÇÈç¹û×Ô¼º¹Ø±Õ×Ô¼º»ò¹Ø±Õ·ÇÍÐ¹ÜÏß³Ì£¬½«»áÊÇÇ¿ÖÆ¸Ä³ÉÒì²½
+
+TaskErrorCode ThreadPoolV4::DelManagedTask(const task_id_t& id)//ÊÇ·ñµÈ´ýÄ¿±ê¹Ø±Õ£¬ÐèÒªÃ÷È·µÄÊÇÈç¹û×Ô¼º¹Ø±Õ×Ô¼º»ò¹Ø±Õ·ÇÍÐ¹ÜÏß³Ì£¬½«»áÊÇÇ¿ÖÆ¸Ä³ÉÒì²½
 {
 	//²ÎÊý¼ì²é
 
@@ -386,30 +445,283 @@ ThreadErrorCode ThreadPoolV4::DelManagedTask(const task_id_t& id)//ÊÇ·ñµÈ´ýÄ¿±ê¹
 	return 	tixDelManagedTask(call_id, id);
 }
 
-ThreadErrorCode	ThreadPoolV4::GetTaskState(const task_id_t& id, ThreadTaskState& state)
+TaskErrorCode	ThreadPoolV4::GetTaskState(const task_id_t& id, TaskWorkState& state)
 {
 	return 	tixGetTaskState(id, state);
 }
 
-ThreadErrorCode ThreadPoolV4::GetTaskByName(const task_name_t& name, task_id_t& id)
+TaskErrorCode ThreadPoolV4::GetTaskByName(const task_name_t& name, task_id_t& id)
 {
 	return 	tixGetTaskByName(name, id);
 }
 
-//Debug
-ThreadErrorCode ThreadPoolV4::PrintMeta(const task_id_t& id/* = task_id_self*/)
+//---------¶¨Ê±Æ÷ºÍIDLE----------
+TaskErrorCode	ThreadPoolV4::AllocTimer(timer_id_t& tid)
 {
-	if (id == task_id_self)
+	task_id_t call_id = _tls_proxy.CreateIfInvalid();
+	if (call_id == task_id_null)
 	{
-		task_id_t id_self = _tls_proxy.CreateIfInvalid();
-		if (id_self == task_id_null)
+		return TEC_ALLOC_FAILED;
+	}
+
+	std::shared_ptr<CTimeWheelSheduler>	tws = _tls_proxy.GetTimeWheelSheduler();
+	tid = tws->AllocNewTimer();
+
+	return TEC_SUCCEED;
+}
+
+TaskErrorCode	ThreadPoolV4::StartTimer(const timer_id_t& tid, const UINT32& millisecond, const timer_function_t& cb, BOOL immediate/* = FALSE*/)
+{
+	task_id_t call_id = _tls_proxy.CreateIfInvalid();
+	if (call_id == task_id_null)
+	{
+		return TEC_ALLOC_FAILED;
+	}
+
+	std::shared_ptr<CTimeWheelSheduler>	tws = _tls_proxy.GetTimeWheelSheduler();
+	BOOL ret = tws->SetWorkTimer(tid, millisecond, cb, immediate);
+
+	return ret ? TEC_SUCCEED : TEC_FAILED;
+}
+
+TaskErrorCode	ThreadPoolV4::StopTimer(const timer_id_t& tid)
+{
+	task_id_t call_id = _tls_proxy.CreateIfInvalid();
+	if (call_id == task_id_null)
+	{
+		return TEC_ALLOC_FAILED;
+	}
+
+	std::shared_ptr<CTimeWheelSheduler>	tws = _tls_proxy.GetTimeWheelSheduler();
+	tws->KillWorkTimer(tid);
+
+	return TEC_SUCCEED;
+}
+
+TaskErrorCode	ThreadPoolV4::ExistTimer(const timer_id_t& tid, BOOL& exist)
+{
+	task_id_t call_id = _tls_proxy.CreateIfInvalid();
+	if (call_id == task_id_null)
+	{
+		return TEC_ALLOC_FAILED;
+	}
+
+	std::shared_ptr<CTimeWheelSheduler>	tws = _tls_proxy.GetTimeWheelSheduler();
+	exist = tws->ExistWorkTimer(tid);
+
+	return TEC_SUCCEED;
+}
+
+TaskErrorCode	ThreadPoolV4::AllocIdle(idle_id_t& iid)
+{
+	task_id_t call_id = _tls_proxy.CreateIfInvalid();
+	if (call_id == task_id_null)
+	{
+		return TEC_ALLOC_FAILED;
+	}
+
+	std::shared_ptr<CIdleSheduler>	dls = _tls_proxy.GetIdleSheduler();
+	iid = dls->AllocNewIdle();
+
+	return TEC_SUCCEED;
+}
+
+TaskErrorCode	ThreadPoolV4::StartIdle(const idle_id_t& iid, const idle_function_t& cb)
+{
+	task_id_t call_id = _tls_proxy.CreateIfInvalid();
+	if (call_id == task_id_null)
+	{
+		return TEC_ALLOC_FAILED;
+	}
+
+	std::shared_ptr<CIdleSheduler>	dls = _tls_proxy.GetIdleSheduler();
+	BOOL ret = dls->SetIdle(iid, cb);
+
+	return ret ? TEC_SUCCEED : TEC_FAILED;
+}
+
+TaskErrorCode	ThreadPoolV4::StopIdle(const idle_id_t& iid)
+{
+	task_id_t call_id = _tls_proxy.CreateIfInvalid();
+	if (call_id == task_id_null)
+	{
+		return TEC_ALLOC_FAILED;
+	}
+
+	std::shared_ptr<CIdleSheduler>	dls = _tls_proxy.GetIdleSheduler();
+	dls->KillIdle(iid);
+
+	return TEC_SUCCEED;
+}
+
+TaskErrorCode	ThreadPoolV4::ExistIdle(const idle_id_t& iid, BOOL& exist)
+{
+	task_id_t call_id = _tls_proxy.CreateIfInvalid();
+	if (call_id == task_id_null)
+	{
+		return TEC_ALLOC_FAILED;
+	}
+
+	std::shared_ptr<CIdleSheduler>	dls = _tls_proxy.GetIdleSheduler();
+	exist = dls->ExistIdle(iid);
+
+	return TEC_SUCCEED;
+}
+
+///////////////////////////////////////////////////////////////
+ThreadPoolV4::CTaskTimerHelper::CTaskTimerHelper()
+	: _timer_id(0), _cb(nullptr)
+{
+}
+
+ThreadPoolV4::CTaskTimerHelper::~CTaskTimerHelper()
+{
+	Stop();
+}
+
+BOOL ThreadPoolV4::CTaskTimerHelper::Start(UINT32 millisecond, BOOL immediate/* = FALSE*/)
+{
+	if (!_timer_id)
+	{
+		timer_id_t tid = 0;
+		TaskErrorCode	tec = AllocTimer(tid);
+		if (tec != TEC_SUCCEED)
 		{
-			return TEC_ALLOC_FAILED;
+			return FALSE;
 		}
-		return tixPrintMeta(id_self);
+		_timer_id = tid;
 	}
-	else
+
+	TaskErrorCode	tec = StartTimer(_timer_id, millisecond, std::bind(&CTaskTimerHelper::OnTimer, this, std::placeholders::_1), immediate);
+	if (tec != TEC_SUCCEED)
 	{
-		return tixPrintMeta(id);
+		return FALSE;
 	}
+
+	return TRUE;
+}
+
+void ThreadPoolV4::CTaskTimerHelper::Stop()
+{
+	if (!_timer_id)
+	{
+		TaskErrorCode	tec = StopTimer(_timer_id);
+		if (tec != TEC_SUCCEED)
+		{
+			return;
+		}
+
+		_timer_id = 0;
+	}
+}
+
+BOOL ThreadPoolV4::CTaskTimerHelper::IsActive()
+{
+	BOOL exist = FALSE;
+	if (!_timer_id)
+	{
+		TaskErrorCode	tec = ExistTimer(_timer_id, exist);
+		if (tec != TEC_SUCCEED)
+		{
+			return FALSE;
+		}
+	}
+
+	return exist;
+}
+
+void ThreadPoolV4::CTaskTimerHelper::SetCallBack(const timer_function_t& cb)
+{
+	_cb = cb;
+}
+
+void ThreadPoolV4::CTaskTimerHelper::OnTimer(const timer_id_t& tid)
+{
+	assert(_cb);
+	if (_cb)
+	{
+		_cb(tid);
+	}
+}
+
+ThreadPoolV4::CTaskIdleHelper::CTaskIdleHelper()
+	: _idle_id(0), _cb(nullptr)
+{
+}
+
+ThreadPoolV4::CTaskIdleHelper::~CTaskIdleHelper()
+{
+	Stop();
+}
+
+BOOL ThreadPoolV4::CTaskIdleHelper::Start()
+{
+	if (!_idle_id)
+	{
+		idle_id_t iid = 0;
+		TaskErrorCode	tec = AllocIdle(iid);
+		if (tec != TEC_SUCCEED)
+		{
+			return FALSE;
+		}
+		_idle_id = iid;
+	}
+
+	TaskErrorCode	tec = StartIdle(_idle_id, std::bind(&CTaskIdleHelper::OnIdle, this, std::placeholders::_1));
+	if (tec != TEC_SUCCEED)
+	{
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+void ThreadPoolV4::CTaskIdleHelper::Stop()
+{
+	if (!_idle_id)
+	{
+		TaskErrorCode	tec = StopIdle(_idle_id);
+		if (tec != TEC_SUCCEED)
+		{
+			return;
+		}
+
+		_idle_id = 0;
+	}
+}
+
+BOOL ThreadPoolV4::CTaskIdleHelper::IsActive()
+{
+	BOOL exist = FALSE;
+	if (!_idle_id)
+	{
+		TaskErrorCode	tec = ExistIdle(_idle_id, exist);
+		if (tec != TEC_SUCCEED)
+		{
+			return FALSE;
+		}
+	}
+
+	return exist;
+}
+
+void ThreadPoolV4::CTaskIdleHelper::SetCallBack(const idle_function_t& cb)
+{
+	_cb = cb;
+}
+
+
+void	ThreadPoolV4::CTaskIdleHelper::OnIdle(const idle_id_t& iid)
+{
+	assert(_cb);
+	if (_cb)
+	{
+		_cb(iid);
+	}
+}
+
+//---------Debug----------
+TaskErrorCode ThreadPoolV4::PrintMeta()
+{
+	return tixPrintMeta();
 }
