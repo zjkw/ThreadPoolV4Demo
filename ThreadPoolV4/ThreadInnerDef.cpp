@@ -205,3 +205,60 @@ UINT32	CIdleSheduler::Trigger(std::shared_ptr<ThreadCtrlBlock> tcb)
 
 	return do_count;
 }
+
+task_msgdepot_t::task_msgdepot_t()
+	: _enable(TRUE)
+{
+}
+
+task_msgdepot_t::~task_msgdepot_t()
+{
+}
+
+void	task_msgdepot_t::Enable(const BOOL& enable)
+{
+	std::unique_lock <std::mutex> lck(_mutex);
+	_enable = enable;
+}
+
+BOOL	task_msgdepot_t::IsEnable()
+{
+	std::unique_lock <std::mutex> lck(_mutex);
+	return _enable;
+}
+
+TaskErrorCode	task_msgdepot_t::Append(const task_msgline_t& line)
+{
+	std::unique_lock <std::mutex> lck(_mutex);
+	if (!_enable)
+	{
+		return TEC_NO_RECEIVER;
+	}
+	_ar.push_back(line);
+	return TEC_SUCCEED;
+}
+
+TaskErrorCode	task_msgdepot_t::FetchList(const BOOL& ignore_enable, std::vector<task_msgline_t>& ar)
+{
+	//tbd
+	std::unique_lock <std::mutex> lck(_mutex);
+	if (!_enable && !ignore_enable)
+	{
+		return TEC_NO_RECEIVER;
+	}
+	ar.clear();
+	ar.swap(_ar);
+	return TEC_SUCCEED;
+}
+
+void task_msgdepot_t::Print(LPCTSTR prix)
+{
+	for (std::vector<task_msgline_t>::iterator it2 = _ar.begin(); it2 != _ar.end(); it2++)
+	{
+		_tprintf(_T("%ssender_id: %llu\n"), prix, it2->sender_id);
+		_tprintf(_T("%sreceiver_id: %llu\n"), prix, it2->receiver_id);
+		_tprintf(_T("%sstamp: %lld\n"), prix, it2->stamp);
+		_tprintf(_T("%scmd: %u\n"), prix, it2->cmd);
+		_tprintf(_T("%sdata_size: %u\n"), prix, it2->data ? it2->data->size() : 0);
+	}
+}

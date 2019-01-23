@@ -47,7 +47,7 @@ static BOOL																	_exit_flag = FALSE;//ÍË³ö×´Ì¬±êÊ¶£¬ÉèÖÃºó±íÊ¾Ö»ÄÜ¼õ²
 static task_id_t															_cursor = task_id_null;
 static std::map<task_id_t, task_static_t>									_static_table;
 //ÏûÏ¢±í
-static std::map<task_id_t, std::vector<task_msgline_t>>						_msg_table;
+static std::map<task_id_t, std::shared_ptr<task_msgdepot_t>>				_msg_table;
 //ÍĞ¹ÜÈÎÎñ/Ïß³Ì³Ø
 static std::map<std::wstring, std::shared_ptr<managed_pool_t>, StrCaseCmp>	_managed_cls_table;
 static std::map<task_id_t, std::wstring>									_managed_task_index;
@@ -155,6 +155,16 @@ static TaskErrorCode StaticGetTaskByName_InLock(const task_name_t& name, task_id
 	return TEC_NOT_EXIST;
 }
 
+static void MsgDelete_InLock(const task_id_t& id)
+{
+	std::map<task_id_t, std::shared_ptr<task_msgdepot_t>>::iterator it =	_msg_table.find(id);
+	if (it != _msg_table.end())
+	{
+		it->second->Enable(FALSE);
+		_msg_table.erase(it);
+	}
+}
+
 ///////////////ÍĞ¹ÜÈÎÎñ/Ïß³Ì³Ø¸¨Öú¹ÜÀí
 static void	ManagedThreadRoutine()
 {
@@ -247,7 +257,7 @@ static void	ManagedThreadRoutine()
 				cls_ptr->active_tasks.erase(first);
 				_managed_task_index.erase(first);
 				StaticDeleteTask_InLock(first);
-				_msg_table.erase(first);
+				MsgDelete_InLock(first);
 			}
 		}
 	}
@@ -368,7 +378,7 @@ static TaskErrorCode PoolDelManagedTask_InLock(const task_id_t& call_id, const t
 				it2->second->wait_tasks.erase(target_id);
 				_managed_task_index.erase(target_id);
 				StaticDeleteTask_InLock(target_id);
-				_msg_table.erase(target_id);
+				MsgDelete_InLock(target_id);
 
 				return TEC_SUCCEED;
 			}
@@ -412,14 +422,14 @@ void	tixDeleteUnmanagedTask(const task_id_t& id)
 	//´ËÊ±Ïß³ÌÒÑ¾­ÍË³ö£¬ËùÒÔÖ»Òª¹ÜÀíÊı¾İ¼´¿É
 	std::unique_lock <std::mutex> lck(_mutex);
 	StaticDeleteTask_InLock(id);
-	_msg_table.erase(id);
+	MsgDelete_InLock(id);
 	//ÍĞ¹ÜÈÎÎñ
 }
 
-TaskErrorCode tixPostMsg(const task_id_t& sender_id, const task_id_t& receiver_id, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags/* = task_flag_null*/)
+//
+TaskErrorCode tixPostMsg(const task_id_t& sender_id, const task_id_t& receiver_id, const task_cmd_t& cmd, task_data_t data, std::shared_ptr<task_msgdepot_t>& channel, const task_flag_t& flags/* = task_flag_null*/)
 {
 	std::unique_lock <std::mutex> lck(_mutex);
-
 	if (_exit_flag)
 	{
 		return TEC_EXIT_STATE;
@@ -480,29 +490,40 @@ TaskErrorCode tixPostMsg(const task_id_t& sender_id, const task_id_t& receiver_i
 		receiver_list.push_back(receiver_id);
 	}
 
+	INT64	tick = GetTickCount64();
 	for (std::vector<task_id_t>::iterator it = receiver_list.begin(); it != receiver_list.end(); it++)
 	{
-		std::map<task_id_t, std::vector<task_msgline_t>>::iterator it2 = _msg_table.find(*it);
+		std::map<task_id_t, std::shared_ptr<task_msgdepot_t>>::iterator it2 = _msg_table.find(*it);
 		if (it2 == _msg_table.end())
 		{
-			std::vector<task_msgline_t> v;
-			_msg_table[*it] = v;
+			std::shared_ptr<task_msgdepot_t>	depot = std::make_shared<task_msgdepot_t>();
+			if (!depot)
+			{
+				return TEC_ALLOC_FAILED;
+			}
+			_msg_table[*it] = depot;
 			it2 = _msg_table.find(*it);
 		}
 		task_msgline_t	line;
-		line.stamp = GetTickCount64();
+		line.stamp = tick;
 		line.sender_id = sender_id;
 		line.receiver_id = *it;
 		line.cmd = cmd;
 		line.data = data;
 
-		it2->second.push_back(line);
+		it2->second->Append(line);
+	}
+	if (IsSingleTaskID(receiver_id))
+	{
+		std::map<task_id_t, std::shared_ptr<task_msgdepot_t>>::iterator it2 = _msg_table.find(receiver_id);
+		ATLASSERT(it2 != _msg_table.end());
+		channel = it2->second;
 	}
 	
 	return TEC_SUCCEED;
 }
 
-TaskErrorCode tixFetchMsgList(const task_id_t& id, std::vector<task_msgline_t>& array)
+TaskErrorCode tixFetchMsgList(const task_id_t& id, std::shared_ptr<task_msgdepot_t>& channel)
 {
 	std::unique_lock <std::mutex> lck(_mutex);
 
@@ -516,17 +537,13 @@ TaskErrorCode tixFetchMsgList(const task_id_t& id, std::vector<task_msgline_t>& 
 		return TEC_INVALID_THREADID;
 	}
 
-	array.clear();
-
-	std::map<task_id_t, std::vector<task_msgline_t>>::iterator it = _msg_table.find(id);
+	std::map<task_id_t, std::shared_ptr<task_msgdepot_t>>::iterator it = _msg_table.find(id);
 	if (it == _msg_table.end())
 	{
 		return TEC_NOT_EXIST;
-	}
+	}	
 
-	array.swap(it->second);
-	_msg_table.erase(id);
-
+	channel = it->second;
 	return TEC_SUCCEED;
 }
 
@@ -616,7 +633,7 @@ TaskErrorCode			tixClearManagedTask(const task_id_t& call_id)
 		_cond.notify_all();
 	}
 
-	//Ö±µ½×î¶àÖ»ÓĞ×Ô¼ºÒ»¸öÏß³ÌÔÚ´Ë
+	//ËùÓĞÍĞ¹ÜÏß³ÌÍË³ö
 	while (true)
 	{
 		Sleep(10);
@@ -734,17 +751,10 @@ TaskErrorCode tixPrintMeta()
 	}
 
 	_tprintf(_T("_msg_table: \n"));
-	for (std::map<task_id_t, std::vector<task_msgline_t>>::iterator it = _msg_table.begin(); it != _msg_table.end(); it++)
+	for (std::map<task_id_t, std::shared_ptr<task_msgdepot_t>>::iterator it = _msg_table.begin(); it != _msg_table.end(); it++)
 	{
 		_tprintf(_T("	(recv)task_id: %llu\n"), it->first);
-		for (std::vector<task_msgline_t>::iterator it2 = it->second.begin(); it2 != it->second.end(); it2++)
-		{
-			_tprintf(_T("		sender_id: %llu\n"), it2->sender_id);
-			_tprintf(_T("		receiver_id: %llu\n"), it2->receiver_id);
-			_tprintf(_T("		stamp: %lld\n"), it2->stamp);
-			_tprintf(_T("		cmd: %u\n"), it2->cmd);
-			_tprintf(_T("		data_size: %u\n"), it2->data ? it2->data->size() : 0);
-		}
+		it->second->Print(_T("		"));
 	}
 
 	_tprintf(_T("_managed_cls_table: \n"));

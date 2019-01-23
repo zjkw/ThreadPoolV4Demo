@@ -98,13 +98,31 @@ TaskErrorCode CThreadLocalProxy::DispatchMsg(size_t& count)
 	ATLASSERT(_tcb);
 
 	std::vector<task_msgline_t> ar;
-	TaskErrorCode err = tixFetchMsgList(id, ar);
+	TaskErrorCode err = TEC_FAILED;
+
+	std::map<task_id_t, std::shared_ptr<task_msgdepot_t>>::iterator it = _msgchannel_table.find(id);	//快捷通道
+	if (it != _msgchannel_table.end())
+	{
+		err = it->second->FetchList(TRUE, ar);
+	}
+	else
+	{
+		std::shared_ptr<task_msgdepot_t>	depot = nullptr;
+		err = tixFetchMsgList(id, depot);
+		if (err == TEC_SUCCEED)
+		{
+			ATLASSERT(depot);
+			_msgchannel_table[id] = depot;
+			err = depot->FetchList(TRUE, ar);
+		}
+	}
+
 	if (err != TEC_SUCCEED)
 	{
 		return err;
 	}
 	count = 0;
-	for (std::vector<task_msgline_t>::iterator it = ar.begin(); it != ar.end(); it++)
+	for (std::vector<task_msgline_t>::iterator it2 = ar.begin(); it2 != ar.end(); it2++)
 	{
 		if (_tcb)
 		{
@@ -115,16 +133,16 @@ TaskErrorCode CThreadLocalProxy::DispatchMsg(size_t& count)
 		}
 		count++;
 
-		std::map<task_cmd_t, task_sinkfunc_t>::iterator it2 = _cmd_table.find(it->cmd);
-		if (it2 != _cmd_table.end())
+		std::map<task_cmd_t, task_sinkfunc_t>::iterator it3 = _cmd_table.find(it2->cmd);
+		if (it3 != _cmd_table.end())
 		{
-			it2->second(it->sender_id, it->cmd, it->data);
+			it3->second(it2->sender_id, it2->cmd, it2->data);
 		}
 		else
 		{
 			if (_rubbish_sink)
 			{
-				_rubbish_sink(it->sender_id, it->cmd, it->data);
+				_rubbish_sink(it2->sender_id, it2->cmd, it2->data);
 			}
 		}
 	}
@@ -188,52 +206,80 @@ std::shared_ptr<CIdleSheduler>		CThreadLocalProxy::GetIdleSheduler()
 	return _dls;
 }
 
+TaskErrorCode CThreadLocalProxy::PostMsg(const task_id_t& receiver_task_id, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags/* = task_flag_null*/)//target_id为0表示广播
+{
+	//参数检查
+
+	//发送者的TLS可能还没初始化，应该先建立网络
+	task_id_t id = CreateIfInvalid();
+	if (id == task_id_null)
+	{
+		return TEC_ALLOC_FAILED;
+	}
+
+	//现在是否有channel登记
+	if (IsSingleTaskID(receiver_task_id))
+	{
+		std::map<task_id_t, std::shared_ptr<task_msgdepot_t>>::iterator it = _msgchannel_table.find(receiver_task_id);	//快捷通道
+		if (it != _msgchannel_table.end())
+		{
+			task_msgline_t	line;
+			line.stamp = GetTickCount64();
+			line.sender_id = id;
+			line.receiver_id = receiver_task_id;
+			line.cmd = cmd;
+			line.data = data;
+
+			return it->second->Append(line);
+		}
+	}
+
+	//执行真正发送操作	
+	std::shared_ptr<task_msgdepot_t> channel = nullptr;
+	TaskErrorCode tec = tixPostMsg(id, receiver_task_id, cmd, data, channel, flags);
+	if (tec == TEC_SUCCEED && IsSingleTaskID(receiver_task_id))
+	{
+		ATLASSERT(_msgchannel_table.find(receiver_task_id) == _msgchannel_table.end());
+		ATLASSERT(channel);
+		_msgchannel_table[receiver_task_id] = channel;
+	}
+	return tec;
+}
+
 thread_local CThreadLocalProxy	_tls_proxy;
 
 //只有当前线程会使用到，所有无需加锁
 
 ////////////////////////
 //针对发送者，允许自己给自己发
-TaskErrorCode ThreadPoolV4::PostMsg(const task_id_t& target_id, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags/* = task_flag_null*/, const task_echofunc_t& echofunc/* = nullptr*/)//target_id为0表示广播
+TaskErrorCode ThreadPoolV4::PostMsg(const task_id_t& receiver_task_id, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags/* = task_flag_null*/, const task_echofunc_t& echofunc/* = nullptr*/)//target_id为0表示广播
 {
 	//参数检查
 
 	//发送者的TLS可能还没初始化，应该先建立网络
-	task_id_t id = _tls_proxy.CreateIfInvalid();
-	if (id == task_id_null)
-	{
-		return TEC_ALLOC_FAILED;
-	}
-
 	//执行真正发送操作
-	TaskErrorCode tec = tixPostMsg(id, target_id, cmd, data, flags);
+	TaskErrorCode tec = _tls_proxy.PostMsg(receiver_task_id, cmd, data, flags);
 	if (echofunc)
 	{
-		echofunc(target_id, cmd, data, tec);
+		echofunc(_tls_proxy.GetCurrentTaskID(), cmd, data, tec);
 	}
 	return tec;
 }
 
-TaskErrorCode ThreadPoolV4::PostMsg(const task_name_t& target_name, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags/* = task_flag_null*/, const task_echofunc_t& echofunc/* = nullptr*/)//target_id为0表示广播
+TaskErrorCode ThreadPoolV4::PostMsg(const task_name_t& receiver_task_name, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags/* = task_flag_null*/, const task_echofunc_t& echofunc/* = nullptr*/)//target_id为0表示广播
 {
 	//参数检查
 
 	//发送者的TLS可能还没初始化，应该先建立网络
-	task_id_t id = _tls_proxy.CreateIfInvalid();
-	if (id == task_id_null)
-	{
-		return TEC_ALLOC_FAILED;
-	}
-
-	task_id_t target_id = task_id_null;
-	TaskErrorCode tec = GetTaskByName(target_name, target_id);
+	task_id_t receiver_task_id = task_id_null;
+	TaskErrorCode tec = GetTaskByName(receiver_task_name, receiver_task_id);
 	if (tec == TEC_SUCCEED)
 	{
 		//执行真正发送操作
-		tec = tixPostMsg(id, target_id, cmd, data, flags);
+		tec = _tls_proxy.PostMsg(receiver_task_id, cmd, data, flags);
 		if (echofunc)
 		{
-			echofunc(target_id, cmd, data, tec);
+			echofunc(_tls_proxy.GetCurrentTaskID(), cmd, data, tec);
 		}
 	}
 

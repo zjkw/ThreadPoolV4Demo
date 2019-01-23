@@ -167,19 +167,46 @@ private:
 	std::map<UINT64, idle_sinkfunc_t>	_idle_cb;
 };
 
+struct task_msgline_t
+{
+	INT64			stamp;
+	task_id_t		sender_id;
+	task_id_t		receiver_id;
+	task_cmd_t		cmd;
+	task_data_t		data;
+};
+
+class task_msgdepot_t
+{
+public:
+	task_msgdepot_t();
+	virtual ~task_msgdepot_t();
+	void	Enable(const BOOL& enable);
+	BOOL	IsEnable();
+	TaskErrorCode	Append(const task_msgline_t& line);
+	TaskErrorCode	FetchList(const BOOL& ignore_enable, std::vector<task_msgline_t>& ar);//ignore_enable表示无视是否enable
+	void	Print(LPCTSTR prix);
+
+private:
+	std::mutex		_mutex;
+	BOOL			_enable;
+	std::vector<task_msgline_t> _ar;
+};
+
 class CThreadLocalProxy
 {
 public:
 	CThreadLocalProxy();
 	virtual ~CThreadLocalProxy();
 
-	task_id_t	CreateIfInvalid();
-	void	DeleteIfValid();
-	TaskErrorCode RegRubbishMsgSink(const task_sinkfunc_t& sinkfunc);	//没有接收器的消息进入垃圾箱
-	TaskErrorCode UnregRubbishMsgSink();
-	TaskErrorCode RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc);
-	TaskErrorCode UnregMsgSink(const task_cmd_t& cmd);
-	TaskErrorCode DispatchMsg(size_t& count);
+	task_id_t		CreateIfInvalid();
+	void			DeleteIfValid();
+	TaskErrorCode	RegRubbishMsgSink(const task_sinkfunc_t& sinkfunc);	//没有接收器的消息进入垃圾箱
+	TaskErrorCode	UnregRubbishMsgSink();
+	TaskErrorCode	RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc);
+	TaskErrorCode	UnregMsgSink(const task_cmd_t& cmd);
+	TaskErrorCode	PostMsg(const task_id_t& receiver_task_id, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags = task_flag_null);//target_id为0表示广播
+	TaskErrorCode	DispatchMsg(size_t& count);
 	task_id_t		GetCurrentTaskID();
 	//调用Reset的为Manager/托管任务，否则为非托管任务
 	void			Reset(const task_id_t&	id, std::shared_ptr<ThreadCtrlBlock> tcb);
@@ -196,17 +223,10 @@ private:
 	std::shared_ptr<CTimeWheelSheduler>		_tws;
 	std::shared_ptr<CIdleSheduler>			_dls;
 	BOOL									_managed;
+
+	std::map<task_id_t, std::shared_ptr<task_msgdepot_t>>	_msgchannel_table;	//快捷通道,但不支持通配符
 };
 
 void	TlsProxyReset_NoLock(const task_id_t&	id, std::shared_ptr<ThreadCtrlBlock> tcb);
-
-struct task_msgline_t
-{
-	INT64			stamp;
-	task_id_t		sender_id;
-	task_id_t		receiver_id;
-	task_cmd_t		cmd;
-	task_data_t		data;
-};
 
 /////////////

@@ -27,6 +27,7 @@ namespace ThreadPoolV4
 	const task_id_t task_id_self = task_id_t(-1);
 	const task_id_t task_id_broadcast_allothers = task_id_t(-2);
 	const task_id_t task_id_broadcast_sameclsothers = task_id_t(-3);
+	#define	IsSingleTaskID(x) ((x) != task_id_null && (x) != task_id_broadcast_allothers && (x) != task_id_broadcast_sameclsothers)
 
 	using task_data_t = std::shared_ptr<std::string>;
 
@@ -52,15 +53,16 @@ namespace ThreadPoolV4
 	enum TaskErrorCode
 	{
 		TEC_SUCCEED = 0,
-		TEC_TIMEOUT = 1,
+		TEC_FAILED = 1,				//通用失败
+		TEC_TIMEOUT = 2,
 		TEC_NAME_EXIST = 3,
-		TEC_ALLOC_FAILED = 5,			//申请资源失败
-		TEC_INVALID_THREADID = 6,		//线程id不存在
-		TEC_EXIT_STATE = 7,				//退出状态下不能创建线程
-		TEC_NOT_EXIST = 8,
-		TEC_INVALID_ARG = 9,			//参数错误
-		TEC_MANAGED_DELETE_SELF = 10,	//托管线程不能自己删除自己
-		TEC_FAILED = 11,				//通用失败
+		TEC_ALLOC_FAILED = 4,			//申请资源失败
+		TEC_INVALID_THREADID = 5,		//线程id不存在
+		TEC_EXIT_STATE = 6,				//退出状态下不能创建线程
+		TEC_NOT_EXIST = 7,
+		TEC_INVALID_ARG = 8,			//参数错误
+		TEC_MANAGED_DELETE_SELF = 9,	//托管线程不能自己删除自己
+		TEC_NO_RECEIVER = 10,			//接收者不存在或拒绝消息
 	};
 	enum TaskWorkState
 	{
@@ -73,13 +75,13 @@ namespace ThreadPoolV4
 	using task_sinkfunc_t = std::function<void(const task_id_t& sender_id, const task_cmd_t& cmd, const task_data_t& data)>;	
 	//发送者发送后，对于发送结果的回调通知
 	using task_echofunc_t = std::function<void(const task_id_t& receiver_id, const task_cmd_t& cmd, const task_data_t& data, const TaskErrorCode& err)>;	
-	//托管线程入口，需要定期轮询ThreadCtrlBlock，是否外部要求其退出
+	//托管线程入口，需要定期轮询IsExitLoop，是否外部要求其退出
 	using task_routinefunc_t = std::function<void(const task_id_t& self_id, const task_param_t& param)>;	
 
 	//---------消息收发-----------
 	//支持接收者为task_id_xxx的通配符投递
-	TaskErrorCode	PostMsg(const task_id_t& target_id, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags = task_flag_null, const task_echofunc_t& echofunc = nullptr);
-	TaskErrorCode	PostMsg(const task_name_t& target_name, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags = task_flag_null, const task_echofunc_t& echofunc = nullptr);
+	TaskErrorCode	PostMsg(const task_id_t& receiver_task_id, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags = task_flag_null, const task_echofunc_t& echofunc = nullptr);
+	TaskErrorCode	PostMsg(const task_name_t& receiver_task_name, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags = task_flag_null, const task_echofunc_t& echofunc = nullptr);
 
 	//针对接收者
 	TaskErrorCode	RegRubbishMsgSink(const task_sinkfunc_t& sinkfunc);	//没有接收器的消息进入垃圾箱
@@ -90,7 +92,7 @@ namespace ThreadPoolV4
 
 	//---------线程池-----------
 	void			SetManagedClsAttri(const task_cls_t& cls, const UINT16& thread_num, const UINT32& unhandle_msg_timeout);//调节线程数量
-	task_id_t		GetCurrentTaskID();//获取当前线程对应的TaskID
+	task_id_t		GetCurrentTaskID();//获取当前所处的TaskID
 	TaskErrorCode	SetCurrentName(const task_name_t& name);//因为托管线程会在AddManagedTask提供名字能力，这里也顺便给非托管线程一个机会：增加别名以便查询
 	TaskErrorCode	RunBaseLoop();
 	TaskErrorCode	RunWinLoop();
