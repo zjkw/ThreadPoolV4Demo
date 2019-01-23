@@ -779,7 +779,10 @@ TaskErrorCode tixPrintMeta()
 		{
 			_tprintf(_T("			task_id: %llu\n"), it2->first);
 			_tprintf(_T("			cls_name: %s\n"), it2->second.cls.c_str());
-			_tprintf(_T("			param_size: %u\n"), it2->second.param ? it2->second.param->size() : 0);
+			if (it2->second.param)
+			{
+				it2->second.param->Print(_T("			"));
+			}
 			_tprintf(_T("			thread_item_ptr: 0x%p\n"), it2->second.thread_item_ptr);
 		}
 
@@ -788,7 +791,10 @@ TaskErrorCode tixPrintMeta()
 		{
 			_tprintf(_T("			task_id: %llu\n"), it2->first);
 			_tprintf(_T("			cls: %s\n"), it2->second.cls.c_str());
-			_tprintf(_T("			param_size: %u\n"), it2->second.param ? it2->second.param->size() : 0);
+			if (it2->second.param)
+			{
+				it2->second.param->Print(_T("			"));
+			}
 			_tprintf(_T("			thread_item_ptr: 0x%p\n"), it2->second.thread_item_ptr);
 		}
 	}

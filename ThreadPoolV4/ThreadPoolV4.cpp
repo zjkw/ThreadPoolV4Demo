@@ -116,9 +116,14 @@ TaskErrorCode CThreadLocalProxy::DispatchMsg(size_t& count)
 			err = depot->FetchList(TRUE, ar);
 		}
 	}
-
+	
 	if (err != TEC_SUCCEED)
 	{
+		//自己到自己通道，不做删除，这是应当存在的快捷通道
+//		if (tec == TEC_NO_RECEIVER)
+//		{
+//			_msgchannel_table.erase(id);
+//		}
 		return err;
 	}
 	count = 0;
@@ -237,11 +242,18 @@ TaskErrorCode CThreadLocalProxy::PostMsg(const task_id_t& receiver_task_id, cons
 	//执行真正发送操作	
 	std::shared_ptr<task_msgdepot_t> channel = nullptr;
 	TaskErrorCode tec = tixPostMsg(id, receiver_task_id, cmd, data, channel, flags);
-	if (tec == TEC_SUCCEED && IsSingleTaskID(receiver_task_id))
+	if (IsSingleTaskID(receiver_task_id))
 	{
-		ATLASSERT(_msgchannel_table.find(receiver_task_id) == _msgchannel_table.end());
-		ATLASSERT(channel);
-		_msgchannel_table[receiver_task_id] = channel;
+		if (tec == TEC_SUCCEED)
+		{
+			ATLASSERT(_msgchannel_table.find(receiver_task_id) == _msgchannel_table.end());
+			ATLASSERT(channel);
+			_msgchannel_table[receiver_task_id] = channel;
+		}
+		else if (tec == TEC_NO_RECEIVER)
+		{
+			_msgchannel_table.erase(receiver_task_id);
+		}
 	}
 	return tec;
 }

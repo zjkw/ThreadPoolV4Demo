@@ -35,7 +35,15 @@ namespace ThreadPoolV4
 	const task_flag_t task_flag_null = 0x00;
 	const task_flag_t task_flag_debug = 0x01;
 
-	using task_param_t = std::shared_ptr<std::string>;
+	//基于线程参数的通信模式，适配于需要快速交换数据/时延小的场合，比如音视频帧生成消费，具体交换内容由其基类派生
+	class task_param_data
+	{
+	public:
+		task_param_data() {}
+		virtual ~task_param_data() {}
+		virtual void	Print(LPCTSTR prix) {}
+	};
+	using task_param_t = std::shared_ptr<task_param_data>;
 
 	using task_cls_t = std::wstring;
 	const task_cls_t	task_cls_default = _T("default");
