@@ -253,6 +253,7 @@ TaskErrorCode	task_msgdepot_t::FetchList(const BOOL& ignore_enable, std::vector<
 
 void task_msgdepot_t::Print(LPCTSTR prix)
 {
+	std::unique_lock <std::mutex> lck(_mutex);
 	for (std::vector<task_msgline_t>::iterator it2 = _ar.begin(); it2 != _ar.end(); it2++)
 	{
 		_tprintf(_T("%ssender_id: %llu\n"), prix, it2->sender_id);
