@@ -360,6 +360,16 @@ TaskErrorCode ThreadPoolV4::SetCurrentName(const task_name_t& name)//ÒòÎªÍÐ¹ÜÏß³
 	return 	tixSetTaskName(id, name);
 }
 
+TaskErrorCode	ThreadPoolV4::SetCurrentAttri(const UINT32& unhandle_msg_timeout)
+{
+	task_id_t id = _tls_proxy.CreateIfInvalid();
+	if (id == task_id_null)
+	{
+		return TEC_ALLOC_FAILED;
+	}
+	return 	tixSetCurrentAttri(id, unhandle_msg_timeout);
+}
+
 TaskErrorCode ThreadPoolV4::RunBaseLoop()
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();

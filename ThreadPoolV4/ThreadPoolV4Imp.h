@@ -16,6 +16,7 @@ void			tixSetClsAttri(const task_cls_t& cls, const UINT16& thread_num, const UIN
 //将会强制同步等待池中所有线程关闭
 TaskErrorCode	tixClearManagedTask(const task_id_t& call_id);
 TaskErrorCode	tixSetTaskName(const task_id_t& id, const task_name_t& name);
+TaskErrorCode	tixSetCurrentAttri(const task_id_t& id, const UINT32& unhandle_msg_timeout);
 TaskErrorCode	tixGetTaskName(const task_id_t& id, task_name_t& name);
 
 //任务管理

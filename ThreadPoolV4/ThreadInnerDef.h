@@ -3,6 +3,9 @@
 #include <map>
 #include "ThreadPoolV4.h"
 
+#define DEFAULT_THREAD_NUM_BY_CLS			(2)
+#define DEFAULT_UNHANDLMSG_TIMEOUT_BY_CLS	(20 * 1000)
+
 using namespace ThreadPoolV4;
 
 //内部有具体实现
@@ -181,6 +184,7 @@ class task_msgdepot_t
 public:
 	task_msgdepot_t();
 	virtual ~task_msgdepot_t();
+	void	SetTimeout(const UINT32& unhandle_msg_timeout);
 	void	Enable(const BOOL& enable);
 	BOOL	IsEnable();
 	TaskErrorCode	Append(const task_msgline_t& line);
@@ -190,6 +194,7 @@ public:
 private:
 	std::mutex		_mutex;
 	BOOL			_enable;
+	UINT32			_unhandle_msg_timeout;
 	std::vector<task_msgline_t> _ar;
 };
 

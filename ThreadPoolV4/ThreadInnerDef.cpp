@@ -207,12 +207,17 @@ UINT32	CIdleSheduler::Trigger(std::shared_ptr<ThreadCtrlBlock> tcb)
 }
 
 task_msgdepot_t::task_msgdepot_t()
-	: _enable(TRUE)
+	: _enable(TRUE), _unhandle_msg_timeout(DEFAULT_UNHANDLMSG_TIMEOUT_BY_CLS)
 {
 }
 
 task_msgdepot_t::~task_msgdepot_t()
 {
+}
+
+void	task_msgdepot_t::SetTimeout(const UINT32& unhandle_msg_timeout)
+{
+	_unhandle_msg_timeout = unhandle_msg_timeout;
 }
 
 void	task_msgdepot_t::Enable(const BOOL& enable)

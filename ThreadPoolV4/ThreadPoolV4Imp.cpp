@@ -3,13 +3,11 @@
 #include <map>
 #include "ThreadPoolV4Imp.h"
 
-#define DEFAULT_THREAD_NUM_BY_CLS			(2)
-#define DEFAULT_UNHANDLMSG_TIMEOUT_BY_CLS	(20 * 1000)
-
 //包括托管和非托管任务对应的kv结构
 struct task_static_t
 {
 	task_name_t		name;
+	std::shared_ptr<task_msgdepot_t>	msgdepot;
 };
 
 //托管任务和线程描述结构
@@ -42,12 +40,10 @@ struct managed_pool_t
 
 static std::mutex															_mutex;
 static std::condition_variable												_cond;
-//静态表
+//静态表(含消息)
 static BOOL																	_exit_flag = FALSE;//退出状态标识，设置后表示只能减不能加
 static task_id_t															_cursor = task_id_null;
 static std::map<task_id_t, task_static_t>									_static_table;
-//消息表
-static std::map<task_id_t, std::shared_ptr<task_msgdepot_t>>				_msg_table;
 //托管任务/线程池
 static std::map<std::wstring, std::shared_ptr<managed_pool_t>, StrCaseCmp>	_managed_cls_table;
 static std::map<task_id_t, std::wstring>									_managed_task_index;
@@ -61,12 +57,59 @@ static task_id_t		StaticAllocTaskID_InLock()
 
 static void			StaticDeleteTask_InLock(const task_id_t& id)
 {
-	_static_table.erase(id);
+	std::map<task_id_t, task_static_t>::iterator it = _static_table.find(id);
+	if (it != _static_table.end())
+	{
+		//msgdepot可能被多出引用
+		if (it->second.msgdepot)
+		{
+			it->second.msgdepot->Enable(FALSE);
+		}
+
+		_static_table.erase(it);
+	}	
 }
 
 static BOOL			StaticExistTask_InLock(const task_id_t& id)
 {
 	return _static_table.find(id) != _static_table.end();
+}
+
+//Name策略：输入name为空则忽略此参数，但无论如何都会检查本地name，如果为空则填写默认值
+static TaskErrorCode StaticUpdateTask_InLock(const task_id_t& id, const task_name_t& name = _T(""), const UINT32& unhandle_msg_timeout = 0)
+{
+	std::map<task_id_t, task_static_t>::iterator it = _static_table.find(id);
+	if (it == _static_table.end())
+	{
+		task_static_t	st;
+		st.msgdepot = std::make_shared<task_msgdepot_t>();
+		if (!st.msgdepot)
+		{
+			return TEC_ALLOC_FAILED;
+		}
+		
+		_static_table[id] = st;
+		it = _static_table.find(id);
+		ATLASSERT(it != _static_table.end());
+	}
+	
+	if (!name.empty())
+	{
+		it->second.name = name;
+	}
+	if (it->second.name.empty())
+	{
+		TCHAR sz[64];
+		_sntprintf_s(sz, _countof(sz), _T("%lld"), id);
+		it->second.name = sz;
+	}
+	
+	if (unhandle_msg_timeout)
+	{
+		it->second.msgdepot->SetTimeout(unhandle_msg_timeout);
+	}
+
+	return TEC_SUCCEED;
 }
 
 static TaskErrorCode StaticSetTaskName_InLock(const task_id_t& id, const task_name_t& name)
@@ -113,20 +156,8 @@ static TaskErrorCode StaticSetTaskName_InLock(const task_id_t& id, const task_na
 			return TEC_INVALID_ARG;
 		}
 	}
-
-
-	std::map<task_id_t, task_static_t>::iterator it = _static_table.find(id);
-	if (it == _static_table.end())
-	{
-		task_static_t	st;
-		_static_table[id] = st;
-		
-		it = _static_table.find(id);
-		ATLASSERT(it != _static_table.end());
-	}
-
-	it->second.name = name;
-	return TEC_SUCCEED;
+	
+	return StaticUpdateTask_InLock(id, name);
 }
 
 static TaskErrorCode StaticGetTaskName_InLock(const task_id_t& id, task_name_t& name)
@@ -153,16 +184,6 @@ static TaskErrorCode StaticGetTaskByName_InLock(const task_name_t& name, task_id
 	}
 
 	return TEC_NOT_EXIST;
-}
-
-static void MsgDelete_InLock(const task_id_t& id)
-{
-	std::map<task_id_t, std::shared_ptr<task_msgdepot_t>>::iterator it =	_msg_table.find(id);
-	if (it != _msg_table.end())
-	{
-		it->second->Enable(FALSE);
-		_msg_table.erase(it);
-	}
 }
 
 ///////////////托管任务/线程池辅助管理
@@ -244,6 +265,11 @@ static void	ManagedThreadRoutine()
 				{
 					//没有在等待执行的任务
 					_cond.wait(lck);
+				}	
+
+				if (first)
+				{
+					StaticUpdateTask_InLock(first, _T(""), cls_ptr->unhandle_msg_timeout);
 				}
 			}
 
@@ -257,7 +283,6 @@ static void	ManagedThreadRoutine()
 				cls_ptr->active_tasks.erase(first);
 				_managed_task_index.erase(first);
 				StaticDeleteTask_InLock(first);
-				MsgDelete_InLock(first);
 			}
 		}
 	}
@@ -345,7 +370,7 @@ static TaskErrorCode PoolAddManagedTask_InLock(const task_cls_t& cls, const task
 		return TEC_ALLOC_FAILED;
 	}
 
-	//申请id
+	//托管
 	managed_task_t	ti;
 	ti.cls = cls_std;
 	ti.param = param;
@@ -378,7 +403,6 @@ static TaskErrorCode PoolDelManagedTask_InLock(const task_id_t& call_id, const t
 				it2->second->wait_tasks.erase(target_id);
 				_managed_task_index.erase(target_id);
 				StaticDeleteTask_InLock(target_id);
-				MsgDelete_InLock(target_id);
 
 				return TEC_SUCCEED;
 			}
@@ -422,7 +446,6 @@ void	tixDeleteUnmanagedTask(const task_id_t& id)
 	//此时线程已经退出，所以只要管理数据即可
 	std::unique_lock <std::mutex> lck(_mutex);
 	StaticDeleteTask_InLock(id);
-	MsgDelete_InLock(id);
 	//托管任务
 }
 
@@ -493,17 +516,16 @@ TaskErrorCode tixPostMsg(const task_id_t& sender_id, const task_id_t& receiver_i
 	INT64	tick = GetTickCount64();
 	for (std::vector<task_id_t>::iterator it = receiver_list.begin(); it != receiver_list.end(); it++)
 	{
-		std::map<task_id_t, std::shared_ptr<task_msgdepot_t>>::iterator it2 = _msg_table.find(*it);
-		if (it2 == _msg_table.end())
+		TCHAR sz[64];
+		_sntprintf_s(sz, _countof(sz), _T("%lld"), *it);
+		StaticUpdateTask_InLock(*it, sz);
+
+		std::map<task_id_t, task_static_t>::iterator it2 = _static_table.find(*it);
+		if (it2 == _static_table.end())
 		{
-			std::shared_ptr<task_msgdepot_t>	depot = std::make_shared<task_msgdepot_t>();
-			if (!depot)
-			{
-				return TEC_ALLOC_FAILED;
-			}
-			_msg_table[*it] = depot;
-			it2 = _msg_table.find(*it);
+			return TEC_ALLOC_FAILED;
 		}
+
 		task_msgline_t	line;
 		line.stamp = tick;
 		line.sender_id = sender_id;
@@ -511,13 +533,13 @@ TaskErrorCode tixPostMsg(const task_id_t& sender_id, const task_id_t& receiver_i
 		line.cmd = cmd;
 		line.data = data;
 
-		it2->second->Append(line);
+		it2->second.msgdepot->Append(line);
 	}
 	if (IsSingleTaskID(receiver_id))
 	{
-		std::map<task_id_t, std::shared_ptr<task_msgdepot_t>>::iterator it2 = _msg_table.find(receiver_id);
-		ATLASSERT(it2 != _msg_table.end());
-		channel = it2->second;
+		std::map<task_id_t, task_static_t>::iterator it2 = _static_table.find(receiver_id);
+		ATLASSERT(it2 != _static_table.end());
+		channel = it2->second.msgdepot;
 	}
 	
 	return TEC_SUCCEED;
@@ -532,18 +554,13 @@ TaskErrorCode tixFetchMsgList(const task_id_t& id, std::shared_ptr<task_msgdepot
 		return TEC_EXIT_STATE;
 	}
 
-	if (!StaticExistTask_InLock(id))
-	{
-		return TEC_INVALID_THREADID;
-	}
-
-	std::map<task_id_t, std::shared_ptr<task_msgdepot_t>>::iterator it = _msg_table.find(id);
-	if (it == _msg_table.end())
+	std::map<task_id_t, task_static_t>::iterator it2 = _static_table.find(id);
+	if (it2 == _static_table.end())
 	{
 		return TEC_NOT_EXIST;
 	}	
 
-	channel = it->second;
+	channel = it2->second.msgdepot;
 	return TEC_SUCCEED;
 }
 
@@ -596,6 +613,8 @@ void			tixSetClsAttri(const task_cls_t& cls, const UINT16& thread_num, const UIN
 	{
 		return;
 	}
+
+	//tbd unhandle_msg_timeout
 
 	CreatePoolIfNotExist_InLock(cls_std, thread_num, unhandle_msg_timeout);
 }
@@ -658,6 +677,18 @@ TaskErrorCode tixSetTaskName(const task_id_t& id, const task_name_t& name)
 	return StaticSetTaskName_InLock(id, name);
 }
 
+TaskErrorCode	tixSetCurrentAttri(const task_id_t& id, const UINT32& unhandle_msg_timeout)
+{
+	std::unique_lock <std::mutex> lck(_mutex);
+	std::map<task_id_t, task_static_t>::iterator it = _static_table.find(id);
+	if (it == _static_table.end())
+	{
+		return TEC_NOT_EXIST;
+	}
+	it->second.msgdepot->SetTimeout(unhandle_msg_timeout);
+	return TEC_SUCCEED;
+}
+
 TaskErrorCode tixGetTaskName(const task_id_t& id, task_name_t& name)
 {
 	std::unique_lock <std::mutex> lck(_mutex);
@@ -688,6 +719,7 @@ TaskErrorCode tixAddManagedTask(const task_cls_t& cls, const task_name_t& name, 
 	{
 		StaticDeleteTask_InLock(id);
 	}
+
 	return tec;
 }
 																																									
@@ -748,13 +780,8 @@ TaskErrorCode tixPrintMeta()
 	{
 		_tprintf(_T("	task_id: %llu\n"), it->first);
 		_tprintf(_T("	name: %s\n"), it->second.name.c_str());
-	}
-
-	_tprintf(_T("_msg_table: \n"));
-	for (std::map<task_id_t, std::shared_ptr<task_msgdepot_t>>::iterator it = _msg_table.begin(); it != _msg_table.end(); it++)
-	{
 		_tprintf(_T("	(recv)task_id: %llu\n"), it->first);
-		it->second->Print(_T("		"));
+		it->second.msgdepot->Print(_T("		"));
 	}
 
 	_tprintf(_T("_managed_cls_table: \n"));

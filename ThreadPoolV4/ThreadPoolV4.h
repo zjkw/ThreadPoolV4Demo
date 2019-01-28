@@ -102,6 +102,7 @@ namespace ThreadPoolV4
 	void			SetManagedClsAttri(const task_cls_t& cls, const UINT16& thread_num, const UINT32& unhandle_msg_timeout);//调节线程数量
 	task_id_t		GetCurrentTaskID();//获取当前所处的TaskID
 	TaskErrorCode	SetCurrentName(const task_name_t& name);//因为托管线程会在AddManagedTask提供名字能力，这里也顺便给非托管线程一个机会：增加别名以便查询
+	TaskErrorCode	SetCurrentAttri(const UINT32& unhandle_msg_timeout);
 	TaskErrorCode	RunBaseLoop();
 	TaskErrorCode	RunWinLoop();
 	TaskErrorCode	SetExitLoop();//设置退出线程/任务标记位，也会顺便退出Loop
