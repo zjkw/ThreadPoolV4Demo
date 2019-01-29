@@ -677,16 +677,10 @@ TaskErrorCode tixSetTaskName(const task_id_t& id, const task_name_t& name)
 	return StaticSetTaskName_InLock(id, name);
 }
 
-TaskErrorCode	tixSetCurrentAttri(const task_id_t& id, const UINT32& unhandle_msg_timeout)
+TaskErrorCode	tixSetTaskAttri(const task_id_t& id, const UINT32& unhandle_msg_timeout)
 {
 	std::unique_lock <std::mutex> lck(_mutex);
-	std::map<task_id_t, task_static_t>::iterator it = _static_table.find(id);
-	if (it == _static_table.end())
-	{
-		return TEC_NOT_EXIST;
-	}
-	it->second.msgdepot->SetTimeout(unhandle_msg_timeout);
-	return TEC_SUCCEED;
+	return StaticUpdateTask_InLock(id, _T(""), unhandle_msg_timeout);
 }
 
 TaskErrorCode tixGetTaskName(const task_id_t& id, task_name_t& name)

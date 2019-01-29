@@ -367,7 +367,7 @@ TaskErrorCode	ThreadPoolV4::SetCurrentAttri(const UINT32& unhandle_msg_timeout)
 	{
 		return TEC_ALLOC_FAILED;
 	}
-	return 	tixSetCurrentAttri(id, unhandle_msg_timeout);
+	return 	tixSetTaskAttri(id, unhandle_msg_timeout);
 }
 
 TaskErrorCode ThreadPoolV4::RunBaseLoop()

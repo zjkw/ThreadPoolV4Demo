@@ -1,13 +1,18 @@
 #pragma once
 
-//本库提供两大功能：任务管理，异步消息通信
+//提供两大功能：任务(线程)管理，任务间通信
+//	数据交换有两种模式：前者适合异步消息通信场合，后者适用于需要低时延和高吞吐的场合；两种模式能共存
+//		基于消息通信PostMsg/FetchMsg(内置)
+//		基于线程参数task_param_t的对象数据共享
+//
 //	任务通过task_id_t标识，可能处于正在运行或待运行状态，而这个和所处线程环境密切相关
 //		如果是通过AddManagedTask创建的Task，我们命名为托管任务，是绑定了task_routinefunc_t的，所处的实际运行线程可能会串行运行多个任务，
 //			但对用户来说，无需感知其背景线程环境
 //		否则为非托管任务，其与当前线程绑定，一旦执行库的函数，将会自动创建一个task_id_t，直到线程生命期结束才解除绑定关系，但这个'任务'
-//			不同于上面的托管任务，其实际是只用一个task_id_t作为id区分，而无绑定task_routinefunc_t
+//			不同于上面的托管任务，其实际是只用一个task_id_t作为id来标识，并无绑定task_routinefunc_t
 //	具体实现上，托管任务是包括了非托管任务相关数据结构的，两者是一个超集和子集的关系
 //	注意目前每类别线程数默认为2
+//
 //多数接口是基于当前线程上下文进行的操作，除了: SetManagedClsAttri，AddManagedTask，GetTaskState，GetTaskByName，PrintMeta等
 
 #include <basetsd.h>
@@ -22,7 +27,7 @@ namespace ThreadPoolV4
 {
 	using task_cmd_t = UINT16;
 
-	using task_id_t = UINT64;	//本进程存活范围内唯一
+	using task_id_t = UINT64;	//本进程生命期内唯一
 	const task_id_t task_id_null = task_id_t(0);
 	const task_id_t task_id_self = task_id_t(-1);
 	const task_id_t task_id_broadcast_allothers = task_id_t(-2);
@@ -35,7 +40,6 @@ namespace ThreadPoolV4
 	const task_flag_t task_flag_null = 0x00;
 	const task_flag_t task_flag_debug = 0x01;
 
-	//基于线程参数的通信模式，适配于需要快速交换数据/时延小的场合，比如音视频帧生成消费，具体交换内容由其基类派生
 	class task_param_data
 	{
 	public:
@@ -115,7 +119,7 @@ namespace ThreadPoolV4
 	//同DelManagedTask注意事项
 	TaskErrorCode	ClearManagedTask();
 	TaskErrorCode	GetTaskState(const task_id_t& id, TaskWorkState& state);
-	TaskErrorCode	GetTaskByName(const task_name_t& name, task_id_t& id);
+	TaskErrorCode	GetTaskByName(const task_name_t& name, task_id_t& id);//Name不分区大小写全局唯一
 
 	//---------定时器和IDLE----------
 	TaskErrorCode	AllocTimer(timer_id_t& tid);
