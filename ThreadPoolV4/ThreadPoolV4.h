@@ -19,8 +19,6 @@
 #include <wtypes.h>
 #include <memory>
 #include <functional>
-#include <mutex>
-#include <vector>
 #include <string>
 
 namespace ThreadPoolV4
@@ -55,6 +53,7 @@ namespace ThreadPoolV4
 	using task_name_t = std::wstring;
 
 	using thread_id_t = DWORD;	//原生线程id
+	using loop_level_t = UINT8;	
 
 	using timer_id_t = UINT64;
 	using timer_sinkfunc_t = std::function<void(const timer_id_t& tid)>;
@@ -89,6 +88,8 @@ namespace ThreadPoolV4
 	using task_echofunc_t = std::function<void(const task_id_t& receiver_id, const task_cmd_t& cmd, const task_data_t& data, const TaskErrorCode& err)>;	
 	//托管线程入口，需要定期轮询IsExitLoop，是否外部要求其退出
 	using task_routinefunc_t = std::function<void(const task_id_t& self_id, const task_param_t& param)>;	
+	//自定义循环函数
+	using task_userloop_t = std::function<void()>;
 
 	//---------消息收发-----------
 	//支持接收者为task_id_xxx的通配符投递
@@ -107,8 +108,8 @@ namespace ThreadPoolV4
 	task_id_t		GetCurrentTaskID();//获取当前所处的TaskID
 	TaskErrorCode	SetCurrentName(const task_name_t& name);//因为托管线程会在AddManagedTask提供名字能力，这里也顺便给非托管线程一个机会：增加别名以便查询
 	TaskErrorCode	SetCurrentAttri(const UINT32& unhandle_msg_timeout);
-	TaskErrorCode	RunBaseLoop();
-	TaskErrorCode	RunWinLoop();
+	TaskErrorCode	RunBaseLoop(const loop_level_t& level = 0, const task_userloop_t& user_loop_func = nullptr);
+	TaskErrorCode	RunWinLoop(const loop_level_t& level = 0, const task_userloop_t& user_loop_func = nullptr);
 	TaskErrorCode	SetExitLoop();//设置退出线程/任务标记位，也会顺便退出Loop
 	TaskErrorCode	IsExitLoop(BOOL& enable);
 
@@ -146,7 +147,7 @@ namespace ThreadPoolV4
 
 	protected:
 		timer_id_t			_timer_id;
-		timer_sinkfunc_t	_cb;
+		timer_sinkfunc_t*	_cb;	//改为指针是为了方便导出
 		task_id_t			_belongs_task_id;
 
 		void	OnTimer(const timer_id_t& tid);
@@ -164,7 +165,7 @@ namespace ThreadPoolV4
 
 	protected:
 		idle_id_t			_idle_id;
-		idle_sinkfunc_t		_cb;
+		idle_sinkfunc_t*	_cb;//改为指针是为了方便导出
 		task_id_t			_belongs_task_id;
 
 		void	OnIdle(const idle_id_t& iid);

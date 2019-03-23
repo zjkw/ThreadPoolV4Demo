@@ -736,9 +736,30 @@ TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& targe
 
 	if(err == TEC_SUCCEED)
 	{
+		BOOL call_exit_msg = FALSE;
+		MSG msg;
 		while (true)
-		{
-			Sleep(10);
+		{			
+			//可能需要窗口消息交互，一个例子是父线窗口是父窗口，子线程是子窗口，当通知子线程退出时候，
+			//父线程在此等待，但子线程窗口删除过程需要和父线程交互，导致子线程无法DestroyWindow，一直
+			//等待父线程响应，而父线程又在等待子线程退出...
+
+			if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+			{
+				if (msg.message == WM_QUIT)
+				{
+					call_exit_msg = TRUE;
+					break;
+				}
+
+				TranslateMessage(&msg);
+				DispatchMessage(&msg);
+				//			Util::Log::Info(_T("CThreadWorkBase"), _T("RunLoop(%u), Msg: %u"), tid, msg.message);
+			}
+			else
+			{
+				Sleep(1);
+			}			
 
 			std::unique_lock <std::mutex> lck(_mutex);
 			if (_managed_task_index.find(target_id) == _managed_task_index.end())
@@ -748,6 +769,11 @@ TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& targe
 		}
 
 		tixDeleteUnmanagedTask(target_id);
+
+		if (call_exit_msg)
+		{
+			PostQuitMessage(msg.wParam);
+		}
 	}	
 
 	return err;

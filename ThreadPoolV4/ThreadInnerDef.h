@@ -1,6 +1,8 @@
 #pragma once
 
 #include <map>
+#include <mutex>
+#include <vector>
 #include "ThreadPoolV4.h"
 
 #define DEFAULT_THREAD_NUM_BY_CLS			(2)
@@ -44,6 +46,7 @@ public:
 	}
 	virtual void	Print(LPCTSTR prix)
 	{
+		std::unique_lock <std::mutex> lck(_mutex);
 		_tprintf(_T("%s_force_exit: %d\n"), prix, _force_exit);
 		_tprintf(_T("%s_print_once: %d\n"), prix, _print_once);
 		_tprintf(_T("%s_thread_id: %u\n"), prix, _thread_id);

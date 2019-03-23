@@ -5,6 +5,22 @@
 #include "ThreadPoolV4Imp.h"
 #include "ThreadPoolV4.h"
 
+#define WINMSG_WEIGHT		(1)
+#define THREADMSG_WEIGHT	(2)
+#define USERLOOP_WEIGHT		(3)
+#define TIMER_WEIGHT		(10)
+#define IDLE_WEIGHT			(20)
+
+
+#define SAFEFREENEW(x)				do\
+									{\
+										if(x)\
+										{\
+											delete x;\
+											x = NULL;\
+										}\
+									}while(0)
+
 CThreadLocalProxy::CThreadLocalProxy() : _id(task_id_null), _rubbish_sink(nullptr), _managed(FALSE)
 {
 }
@@ -370,7 +386,7 @@ TaskErrorCode	ThreadPoolV4::SetCurrentAttri(const UINT32& unhandle_msg_timeout)
 	return 	tixSetTaskAttri(id, unhandle_msg_timeout);
 }
 
-TaskErrorCode ThreadPoolV4::RunBaseLoop()
+TaskErrorCode ThreadPoolV4::RunBaseLoop(const loop_level_t& level/* = 0*/, const task_userloop_t& user_loop_func/* = nullptr*/)
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
@@ -381,37 +397,62 @@ TaskErrorCode ThreadPoolV4::RunBaseLoop()
 	std::shared_ptr<CTimeWheelSheduler>	tws = _tls_proxy.GetTimeWheelSheduler();
 	std::shared_ptr<CIdleSheduler>		dls = _tls_proxy.GetIdleSheduler();
 	
+	INT32	threadmsg_weight = 0;
+	INT32	user_weight = 0;
+	INT32	timer_weight = 0;
+	INT32	idle_weight = 0;
+
 	while (!tcb->IsWaitExit())
 	{
-		BOOL has_business = FALSE;
+		threadmsg_weight++;
+		user_weight++;
+		timer_weight++;
+		idle_weight++;
 
-		size_t count = 0;
-		if (DispatchMsg(count) == TEC_SUCCEED)
+		if (threadmsg_weight > 0)
 		{
-			if (count)
+			threadmsg_weight -= THREADMSG_WEIGHT;
+
+			size_t count = 0;
+			if (DispatchMsg(count) == TEC_SUCCEED)
 			{
-				has_business = TRUE;
 			}
 		}
-		
-		if (!has_business)
+
+		if (user_loop_func && user_weight > 0)
 		{
+			user_weight -= level > 0 ? level : USERLOOP_WEIGHT;
+
+			user_loop_func();
+		}
+
+		if (timer_weight > 0)
+		{
+			timer_weight -= TIMER_WEIGHT;
+
 			UINT32 timer_count = tws->Trigger(tcb);
 			if (!timer_count)
 			{
-				UINT32 idle_count = dls->Trigger(tcb);
-				if (!idle_count)
-				{
-					Sleep(10);
-				}
 			}
 		}
+		
+		if (idle_weight > 0)
+		{
+			idle_weight -= IDLE_WEIGHT;
+
+			UINT32 idle_count = dls->Trigger(tcb);
+			if (!idle_count)
+			{		
+			}
+		}
+		
+		Sleep(1);
 	}
 
 	return TEC_SUCCEED;
 }
 
-TaskErrorCode ThreadPoolV4::RunWinLoop()
+TaskErrorCode ThreadPoolV4::RunWinLoop(const loop_level_t& level/* = 0*/, const task_userloop_t& user_loop_func/* = nullptr*/)
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
@@ -422,44 +463,76 @@ TaskErrorCode ThreadPoolV4::RunWinLoop()
 	std::shared_ptr<CTimeWheelSheduler>	tws = _tls_proxy.GetTimeWheelSheduler();
 	std::shared_ptr<CIdleSheduler>		dls = _tls_proxy.GetIdleSheduler();
 
+	INT32	winmsg_weight = 0;
+	INT32	threadmsg_weight = 0;
+	INT32	user_weight = 0;
+	INT32	timer_weight = 0;
+	INT32	idle_weight = 0;
+
 	while (!tcb->IsWaitExit())
 	{
-		BOOL has_business = FALSE;
+		winmsg_weight++;
+		threadmsg_weight++;
+		user_weight++;
+		timer_weight++;
+		idle_weight++;
 
-		MSG msg;
-		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+		if (winmsg_weight > 0)
 		{
-			if (msg.message == WM_QUIT)
+			winmsg_weight -= WINMSG_WEIGHT;
+
+			MSG msg;
+			if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 			{
-				break;
+				if (msg.message == WM_QUIT)
+				{
+					break;
+				}
+
+				TranslateMessage(&msg);
+				DispatchMessage(&msg);
+				//			Util::Log::Info(_T("CThreadWorkBase"), _T("RunLoop(%u), Msg: %u"), tid, msg.message);
 			}
-
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-
-			has_business = TRUE;
-
-			//			Util::Log::Info(_T("CThreadWorkBase"), _T("RunLoop(%u), Msg: %u"), tid, msg.message);
-		}
-
-		size_t count = 0;
-		if (DispatchMsg(count) == TEC_SUCCEED)
-		{
-			has_business = TRUE;
 		}
 		
-		if (!has_business)
+		if (threadmsg_weight > 0)
 		{
+			threadmsg_weight -= THREADMSG_WEIGHT;
+
+			size_t count = 0;
+			if (DispatchMsg(count) == TEC_SUCCEED)
+			{
+			}
+		}
+
+		if (user_loop_func && user_weight > 0)
+		{
+			user_weight -= level > 0 ? level : USERLOOP_WEIGHT;
+
+			user_loop_func();
+		}
+
+		if (timer_weight > 0)
+		{
+			timer_weight -= TIMER_WEIGHT;
+
 			UINT32 timer_count = tws->Trigger(tcb);
 			if (!timer_count)
 			{
-				UINT32 idle_count = dls->Trigger(tcb);
-				if (!idle_count)
-				{
-					Sleep(10);
-				}
 			}
 		}
+
+		if (idle_weight > 0)
+		{
+			idle_weight -= IDLE_WEIGHT;
+
+			UINT32 idle_count = dls->Trigger(tcb);
+			if (!idle_count)
+			{
+			}
+		}
+
+		Sleep(1);
 	}
 
 	return TEC_SUCCEED;
@@ -648,6 +721,8 @@ ThreadPoolV4::CTaskTimerHelper::~CTaskTimerHelper()
 	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
 
 	Stop();
+
+	SAFEFREENEW(_cb);
 }
 
 BOOL ThreadPoolV4::CTaskTimerHelper::Start(UINT32 millisecond, BOOL immediate/* = FALSE*/)
@@ -668,6 +743,7 @@ BOOL ThreadPoolV4::CTaskTimerHelper::Start(UINT32 millisecond, BOOL immediate/* 
 	TaskErrorCode	tec = StartTimer(_timer_id, millisecond, std::bind(&CTaskTimerHelper::OnTimer, this, std::placeholders::_1), immediate);
 	if (tec != TEC_SUCCEED)
 	{
+		ATLASSERT(FALSE);
 		return FALSE;
 	}
 
@@ -678,15 +754,15 @@ void ThreadPoolV4::CTaskTimerHelper::Stop()
 {
 	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
 
-	if (!_timer_id)
+	if (_timer_id)
 	{
 		TaskErrorCode	tec = StopTimer(_timer_id);
+		_timer_id = 0;
 		if (tec != TEC_SUCCEED)
 		{
+			ATLASSERT(FALSE);
 			return;
 		}
-
-		_timer_id = 0;
 	}
 }
 
@@ -695,7 +771,7 @@ BOOL ThreadPoolV4::CTaskTimerHelper::IsActive()
 	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
 
 	BOOL exist = FALSE;
-	if (!_timer_id)
+	if (_timer_id)
 	{
 		TaskErrorCode	tec = ExistTimer(_timer_id, exist);
 		if (tec != TEC_SUCCEED)
@@ -711,7 +787,16 @@ void ThreadPoolV4::CTaskTimerHelper::SetCallBack(const timer_sinkfunc_t& cb)
 {
 	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
 
-	_cb = cb;
+	if (!_cb)
+	{
+		_cb = new timer_sinkfunc_t;
+		if (!_cb)
+		{
+			ATLASSERT(_cb);
+			return;
+		}
+	}
+	*_cb = cb;
 }
 
 void ThreadPoolV4::CTaskTimerHelper::OnTimer(const timer_id_t& tid)
@@ -719,9 +804,9 @@ void ThreadPoolV4::CTaskTimerHelper::OnTimer(const timer_id_t& tid)
 	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
 
 	ATLASSERT(_cb);
-	if (_cb)
+	if (_cb && *_cb)
 	{
-		_cb(tid);
+		(*_cb)(tid);
 	}
 }
 
@@ -736,6 +821,8 @@ ThreadPoolV4::CTaskIdleHelper::~CTaskIdleHelper()
 	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
 
 	Stop();
+
+	SAFEFREENEW(_cb);
 }
 
 BOOL ThreadPoolV4::CTaskIdleHelper::Start()
@@ -766,15 +853,14 @@ void ThreadPoolV4::CTaskIdleHelper::Stop()
 {
 	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
 
-	if (!_idle_id)
+	if (_idle_id)
 	{
 		TaskErrorCode	tec = StopIdle(_idle_id);
+		_idle_id = 0;
 		if (tec != TEC_SUCCEED)
 		{
 			return;
 		}
-
-		_idle_id = 0;
 	}
 }
 
@@ -783,7 +869,7 @@ BOOL ThreadPoolV4::CTaskIdleHelper::IsActive()
 	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
 
 	BOOL exist = FALSE;
-	if (!_idle_id)
+	if (_idle_id)
 	{
 		TaskErrorCode	tec = ExistIdle(_idle_id, exist);
 		if (tec != TEC_SUCCEED)
@@ -799,18 +885,26 @@ void ThreadPoolV4::CTaskIdleHelper::SetCallBack(const idle_sinkfunc_t& cb)
 {
 	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
 
-	_cb = cb;
+	if (!_cb)
+	{
+		_cb = new idle_sinkfunc_t;
+		if (!_cb)
+		{
+			ATLASSERT(_cb);
+			return;
+		}
+	}
+	*_cb = cb;
 }
-
 
 void	ThreadPoolV4::CTaskIdleHelper::OnIdle(const idle_id_t& iid)
 {
 	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
 
 	ATLASSERT(_cb);
-	if (_cb)
+	if (_cb && *_cb)
 	{
-		_cb(iid);
+		(*_cb)(iid);
 	}
 }
 
