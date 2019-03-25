@@ -748,6 +748,7 @@ TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& targe
 			{
 				if (msg.message == WM_QUIT)
 				{
+					SetExitLoop();
 					call_exit_msg = TRUE;
 					break;
 				}

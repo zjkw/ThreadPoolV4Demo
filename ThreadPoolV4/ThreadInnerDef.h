@@ -22,6 +22,7 @@ public:
 	}
 	virtual BOOL	IsWaitExit() = 0;
 	virtual void	SetWaitExit() = 0;
+	virtual void	Reset() = 0;
 	virtual void	Print(LPCTSTR prix) = 0;
 };
 
@@ -43,6 +44,11 @@ public:
 	{
 		std::unique_lock <std::mutex> lck(_mutex);
 		_force_exit = TRUE;
+	}
+	virtual void	Reset()
+	{
+		std::unique_lock <std::mutex> lck(_mutex);
+		_force_exit = FALSE;
 	}
 	virtual void	Print(LPCTSTR prix)
 	{
@@ -76,6 +82,10 @@ public:
 	virtual void	SetWaitExit()
 	{
 		_force_exit = TRUE;
+	}
+	virtual void	Reset()
+	{
+		_force_exit = FALSE;
 	}
 	virtual void	Print(LPCTSTR prix)
 	{

@@ -181,6 +181,7 @@ void	CThreadLocalProxy::Reset(const task_id_t& id, std::shared_ptr<ThreadCtrlBlo
 	_cmd_table.clear();
 	_rubbish_sink = nullptr;
 	_tcb = tcb;
+	_tcb->Reset();
 	_managed = TRUE;
 
 	_tws = std::make_shared<CTimeWheelSheduler>();
@@ -486,6 +487,7 @@ TaskErrorCode ThreadPoolV4::RunWinLoop(const loop_level_t& level/* = 0*/, const 
 			{
 				if (msg.message == WM_QUIT)
 				{
+					SetExitLoop();
 					break;
 				}
 
