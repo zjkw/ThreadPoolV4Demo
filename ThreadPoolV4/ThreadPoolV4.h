@@ -13,6 +13,8 @@
 //	具体实现上，托管任务是包括了非托管任务相关数据结构的，两者是一个超集和子集的关系
 //	注意目前每类别线程数默认为2
 //
+//	线程库将需要深度介入消息循环，提供两种循环管理模式：自定义循环模式->手动调用DispatchInternal；默认循环模式->调用RunXXXLoop，但需要注意这个阻塞函数是需要SetWaitExit才能退出
+//
 //多数接口是基于当前线程上下文进行的操作，除了: SetManagedClsAttri，AddManagedTask，GetTaskState，GetTaskByName，PrintMeta等
 
 #include <basetsd.h>
@@ -38,22 +40,30 @@ namespace ThreadPoolV4
 	const task_flag_t task_flag_null = 0x00;
 	const task_flag_t task_flag_debug = 0x01;
 
-	class task_param_data
+	class task_param_base
 	{
 	public:
-		task_param_data() {}
-		virtual ~task_param_data() {}
+		task_param_base() {}
+		virtual ~task_param_base() {}
 		virtual void	Print(LPCTSTR prix) {}
 	};
-	using task_param_t = std::shared_ptr<task_param_data>;
+	using task_param_t = std::shared_ptr<task_param_base>;
+
+	class msgsink_userdata_base
+	{
+	public:
+		msgsink_userdata_base() {}
+		virtual ~msgsink_userdata_base() {}
+		virtual void	Print(LPCTSTR prix) {}
+	};
+	using msgsink_userdata_t = std::shared_ptr<msgsink_userdata_base>;
 
 	using task_cls_t = std::wstring;
 	const task_cls_t	task_cls_default = _T("default");
 
 	using task_name_t = std::wstring;
 
-	using thread_id_t = DWORD;	//原生线程id
-	using loop_level_t = UINT8;	
+	using thread_id_t = UINT;	//原生线程id
 
 	using timer_id_t = UINT64;
 	using timer_sinkfunc_t = std::function<void(const timer_id_t& tid)>;
@@ -83,9 +93,9 @@ namespace ThreadPoolV4
 	};
 	
 	//接收者注册的回调函数
-	using task_sinkfunc_t = std::function<void(const task_id_t& sender_id, const task_cmd_t& cmd, const task_data_t& data)>;	
+	using task_sinkfunc_t = std::function<void(const task_id_t& sender_id, const task_cmd_t& cmd, const task_data_t& data, const msgsink_userdata_t& userdata)>;
 	//发送者发送后，对于发送结果的回调通知
-	using task_echofunc_t = std::function<void(const task_id_t& receiver_id, const task_cmd_t& cmd, const task_data_t& data, const TaskErrorCode& err)>;	
+	using task_echofunc_t = std::function<void(const task_id_t& receiver_id, const task_cmd_t& cmd, const task_data_t& data, const TaskErrorCode& err)>;
 	//托管线程入口，需要定期轮询IsExitLoop，是否外部要求其退出
 	using task_routinefunc_t = std::function<void(const task_id_t& self_id, const task_param_t& param)>;	
 	//自定义循环函数
@@ -97,20 +107,20 @@ namespace ThreadPoolV4
 	TaskErrorCode	PostMsg(const task_name_t& receiver_task_name, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags = task_flag_null, const task_echofunc_t& echofunc = nullptr);
 
 	//针对接收者
-	TaskErrorCode	RegRubbishMsgSink(const task_sinkfunc_t& sinkfunc);	//没有接收器的消息进入垃圾箱
-	TaskErrorCode	UnregRubbishMsgSink();
-	TaskErrorCode	RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc);
+	TaskErrorCode	RegDefaultMsgSink(const task_sinkfunc_t& sinkfunc, const msgsink_userdata_t& userdata);	//没有接收器的消息进入垃圾箱
+	TaskErrorCode	UnregDefaultMsgSink();
+	TaskErrorCode	RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc, const msgsink_userdata_t& userdata);
 	TaskErrorCode	UnregMsgSink(const task_cmd_t& cmd);
-	TaskErrorCode	DispatchMsg(size_t& count);//自动分发当前线程收到的消息，不包括windows消息
+	TaskErrorCode	DispatchInternal(const BOOL& triggle_idle = TRUE, BOOL* real_empty_handle = nullptr);//内部数据分发，外部指示是否触发idle，返回本函数是否实际有处理业务
 
 	//---------线程池-----------
-	void			SetManagedClsAttri(const task_cls_t& cls, const UINT16& thread_num, const UINT32& unhandle_msg_timeout);//调节线程数量
+	void			SetManagedClsAttri(const task_cls_t& cls, const UINT16& thread_limit_max_num, const UINT32& unhandle_msg_timeout);//调节线程数量
 	task_id_t		GetCurrentTaskID();//获取当前所处的TaskID
 	TaskErrorCode	SetCurrentName(const task_name_t& name);//因为托管线程会在AddManagedTask提供名字能力，这里也顺便给非托管线程一个机会：增加别名以便查询
 	TaskErrorCode	SetCurrentAttri(const UINT32& unhandle_msg_timeout);
-	TaskErrorCode	RunBaseLoop(const loop_level_t& level = 0, const task_userloop_t& user_loop_func = nullptr);
-	TaskErrorCode	RunWinLoop(const loop_level_t& level = 0, const task_userloop_t& user_loop_func = nullptr);
-	TaskErrorCode	SetExitLoop();//设置退出线程/任务标记位，也会顺便退出Loop
+	TaskErrorCode	RunBaseLoop(const task_userloop_t& user_loop_func = nullptr);
+	TaskErrorCode	RunWinLoop(const task_userloop_t& user_loop_func = nullptr);
+	TaskErrorCode	SetExitLoop(const BOOL& enable);//设置退出RunXXXLoop标记，这样如果是托管线程运行控制权将可以回到task_routinefunc_t
 	TaskErrorCode	IsExitLoop(BOOL& enable);
 
 	//---------任务管理----------
@@ -140,7 +150,7 @@ namespace ThreadPoolV4
 		CTaskTimerHelper();
 		virtual ~CTaskTimerHelper();
 
-		BOOL Start(UINT32 millisecond, BOOL immediate = FALSE);
+		BOOL Start(const UINT32& millisecond, const BOOL& immediate = FALSE);
 		void Stop();
 		BOOL IsActive();
 		void SetCallBack(const timer_sinkfunc_t& cb);

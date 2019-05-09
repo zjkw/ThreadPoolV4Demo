@@ -5,13 +5,6 @@
 #include "ThreadPoolV4Imp.h"
 #include "ThreadPoolV4.h"
 
-#define WINMSG_WEIGHT		(1)
-#define THREADMSG_WEIGHT	(2)
-#define USERLOOP_WEIGHT		(3)
-#define TIMER_WEIGHT		(10)
-#define IDLE_WEIGHT			(20)
-
-
 #define SAFEFREENEW(x)				do\
 									{\
 										if(x)\
@@ -21,7 +14,7 @@
 										}\
 									}while(0)
 
-CThreadLocalProxy::CThreadLocalProxy() : _id(task_id_null), _rubbish_sink(nullptr), _managed(FALSE)
+CThreadLocalProxy::CThreadLocalProxy() : _id(task_id_null), _managed(FALSE)
 {
 }
 
@@ -67,7 +60,7 @@ void	CThreadLocalProxy::DeleteIfValid()
 	}
 }
 
-TaskErrorCode CThreadLocalProxy::RegRubbishMsgSink(const task_sinkfunc_t& sinkfunc)	//没有接收器的消息进入垃圾箱
+TaskErrorCode CThreadLocalProxy::RegDefaultMsgSink(const task_sinkfunc_t& sinkfunc, const msgsink_userdata_t& userdata)	//没有接收器的消息进入垃圾箱
 {
 	//发送者的TLS可能还没初始化，应该先建立网络
 	task_id_t id = CreateIfInvalid();
@@ -75,17 +68,19 @@ TaskErrorCode CThreadLocalProxy::RegRubbishMsgSink(const task_sinkfunc_t& sinkfu
 	{
 		return TEC_ALLOC_FAILED;
 	}
-	_rubbish_sink = sinkfunc;
+	_default_msgpair.sinkfunc = sinkfunc;
+	_default_msgpair.userdata = userdata;
+
 	return TEC_SUCCEED;
 }
 
-TaskErrorCode CThreadLocalProxy::UnregRubbishMsgSink()
+TaskErrorCode CThreadLocalProxy::UnregDefaultMsgSink()
 {
-	_rubbish_sink = nullptr;
+	_default_msgpair.Reset();
 	return TEC_SUCCEED;
 }
 
-TaskErrorCode CThreadLocalProxy::RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc)
+TaskErrorCode CThreadLocalProxy::RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc, const msgsink_userdata_t& userdata)
 {
 	//发送者的TLS可能还没初始化，应该先建立网络
 	task_id_t id = CreateIfInvalid();
@@ -93,7 +88,8 @@ TaskErrorCode CThreadLocalProxy::RegMsgSink(const task_cmd_t& cmd, const task_si
 	{
 		return TEC_ALLOC_FAILED;
 	}
-	_cmd_table[cmd] = sinkfunc;
+	msgsink_pair	ms(sinkfunc, userdata);
+	_cmd_table[cmd] = ms;
 	return TEC_SUCCEED;
 }
 
@@ -154,16 +150,16 @@ TaskErrorCode CThreadLocalProxy::DispatchMsg(size_t& count)
 		}
 		count++;
 
-		std::map<task_cmd_t, task_sinkfunc_t>::iterator it3 = _cmd_table.find(it2->cmd);
+		std::map<task_cmd_t, msgsink_pair>::iterator it3 = _cmd_table.find(it2->cmd);
 		if (it3 != _cmd_table.end())
 		{
-			it3->second(it2->sender_id, it2->cmd, it2->data);
+			it3->second.sinkfunc(it2->sender_id, it2->cmd, it2->data, it3->second.userdata);
 		}
 		else
 		{
-			if (_rubbish_sink)
+			if (_default_msgpair.sinkfunc)
 			{
-				_rubbish_sink(it2->sender_id, it2->cmd, it2->data);
+				_default_msgpair.sinkfunc(it2->sender_id, it2->cmd, it2->data, _default_msgpair.userdata);
 			}
 		}
 	}
@@ -179,9 +175,9 @@ void	CThreadLocalProxy::Reset(const task_id_t& id, std::shared_ptr<ThreadCtrlBlo
 {
 	_id = id;
 	_cmd_table.clear();
-	_rubbish_sink = nullptr;
+	_default_msgpair.Reset();
 	_tcb = tcb;
-	_tcb->Reset();
+	_tcb->SetWaitExit(FALSE);
 	_managed = TRUE;
 
 	_tws = std::make_shared<CTimeWheelSheduler>();
@@ -315,19 +311,19 @@ TaskErrorCode ThreadPoolV4::PostMsg(const task_name_t& receiver_task_name, const
 	return tec;
 }
 //针对接收者
-TaskErrorCode ThreadPoolV4::RegRubbishMsgSink(const task_sinkfunc_t& sinkfunc)	//没有接收器的消息进入垃圾箱
+TaskErrorCode ThreadPoolV4::RegDefaultMsgSink(const task_sinkfunc_t& sinkfunc, const msgsink_userdata_t& userdata)	//没有接收器的消息进入垃圾箱
 {
-	return _tls_proxy.RegRubbishMsgSink(sinkfunc);
+	return _tls_proxy.RegDefaultMsgSink(sinkfunc, userdata);
 }
 
-TaskErrorCode ThreadPoolV4::UnregRubbishMsgSink()
+TaskErrorCode ThreadPoolV4::UnregDefaultMsgSink()
 {
-	return _tls_proxy.UnregRubbishMsgSink();
+	return _tls_proxy.UnregDefaultMsgSink();
 }
 
-TaskErrorCode ThreadPoolV4::RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc)
+TaskErrorCode ThreadPoolV4::RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc, const msgsink_userdata_t& userdata)
 {
-	return _tls_proxy.RegMsgSink(cmd, sinkfunc);
+	return _tls_proxy.RegMsgSink(cmd, sinkfunc, userdata);
 }
 
 TaskErrorCode ThreadPoolV4::UnregMsgSink(const task_cmd_t& cmd)
@@ -335,15 +331,34 @@ TaskErrorCode ThreadPoolV4::UnregMsgSink(const task_cmd_t& cmd)
 	return _tls_proxy.UnregMsgSink(cmd);
 }
 
-TaskErrorCode ThreadPoolV4::DispatchMsg(size_t& count)
+//内部数据分发，外部指示是否触发idle，返回本函数是否实际有处理业务
+TaskErrorCode	ThreadPoolV4::DispatchInternal(const BOOL& triggle_idle/* = TRUE*/, BOOL* real_empty_handle/* = nullptr*/)
 {
-	return 	_tls_proxy.DispatchMsg(count);
+	std::shared_ptr<ThreadCtrlBlock>	tcb = _tls_proxy.GetThreadCtrlBlock();
+	std::shared_ptr<CTimeWheelSheduler>	tws = _tls_proxy.GetTimeWheelSheduler();
+	std::shared_ptr<CIdleSheduler>		dls = _tls_proxy.GetIdleSheduler();
+
+	size_t msg_count = 0;
+	_tls_proxy.DispatchMsg(msg_count);	
+	size_t timer_count = tws->Trigger(tcb);
+	size_t idler_count = 0;
+	if (triggle_idle)
+	{
+		idler_count = dls->Trigger(tcb);
+	}
+
+	if (real_empty_handle)
+	{
+		*real_empty_handle = msg_count || timer_count || idler_count;
+	}
+
+	return TEC_SUCCEED;
 }
 
 //线程池
-void			ThreadPoolV4::SetManagedClsAttri(const task_cls_t& cls, const UINT16& thread_num, const UINT32& unhandle_msg_timeout)//调节线程数量
+void			ThreadPoolV4::SetManagedClsAttri(const task_cls_t& cls, const UINT16& thread_limit_max_num, const UINT32& unhandle_msg_timeout)//调节线程数量
 {
-	tixSetClsAttri(cls, thread_num, unhandle_msg_timeout);
+	tixSetClsAttri(cls, thread_limit_max_num, unhandle_msg_timeout);
 }
 
 TaskErrorCode ThreadPoolV4::ClearManagedTask()//将会强制同步等待池中所有线程关闭
@@ -387,65 +402,23 @@ TaskErrorCode	ThreadPoolV4::SetCurrentAttri(const UINT32& unhandle_msg_timeout)
 	return 	tixSetTaskAttri(id, unhandle_msg_timeout);
 }
 
-TaskErrorCode ThreadPoolV4::RunBaseLoop(const loop_level_t& level/* = 0*/, const task_userloop_t& user_loop_func/* = nullptr*/)
+TaskErrorCode ThreadPoolV4::RunBaseLoop(const task_userloop_t& user_loop_func/* = nullptr*/)
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
 	{
 		return TEC_ALLOC_FAILED;
 	}
-	std::shared_ptr<ThreadCtrlBlock>	tcb = _tls_proxy.GetThreadCtrlBlock();
-	std::shared_ptr<CTimeWheelSheduler>	tws = _tls_proxy.GetTimeWheelSheduler();
-	std::shared_ptr<CIdleSheduler>		dls = _tls_proxy.GetIdleSheduler();
 	
-	INT32	threadmsg_weight = 0;
-	INT32	user_weight = 0;
-	INT32	timer_weight = 0;
-	INT32	idle_weight = 0;
-
+	std::shared_ptr<ThreadCtrlBlock>	tcb = _tls_proxy.GetThreadCtrlBlock();
 	while (!tcb->IsWaitExit())
 	{
-		threadmsg_weight++;
-		user_weight++;
-		timer_weight++;
-		idle_weight++;
-
-		if (threadmsg_weight > 0)
+		if (user_loop_func)
 		{
-			threadmsg_weight -= THREADMSG_WEIGHT;
-
-			size_t count = 0;
-			if (DispatchMsg(count) == TEC_SUCCEED)
-			{
-			}
-		}
-
-		if (user_loop_func && user_weight > 0)
-		{
-			user_weight -= level > 0 ? level : USERLOOP_WEIGHT;
-
 			user_loop_func();
 		}
 
-		if (timer_weight > 0)
-		{
-			timer_weight -= TIMER_WEIGHT;
-
-			UINT32 timer_count = tws->Trigger(tcb);
-			if (!timer_count)
-			{
-			}
-		}
-		
-		if (idle_weight > 0)
-		{
-			idle_weight -= IDLE_WEIGHT;
-
-			UINT32 idle_count = dls->Trigger(tcb);
-			if (!idle_count)
-			{		
-			}
-		}
+		DispatchInternal();
 		
 		Sleep(1);
 	}
@@ -453,86 +426,37 @@ TaskErrorCode ThreadPoolV4::RunBaseLoop(const loop_level_t& level/* = 0*/, const
 	return TEC_SUCCEED;
 }
 
-TaskErrorCode ThreadPoolV4::RunWinLoop(const loop_level_t& level/* = 0*/, const task_userloop_t& user_loop_func/* = nullptr*/)
+TaskErrorCode ThreadPoolV4::RunWinLoop(const task_userloop_t& user_loop_func/* = nullptr*/)
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
 	{
 		return TEC_ALLOC_FAILED;
 	}
+
 	std::shared_ptr<ThreadCtrlBlock>	tcb = _tls_proxy.GetThreadCtrlBlock();
-	std::shared_ptr<CTimeWheelSheduler>	tws = _tls_proxy.GetTimeWheelSheduler();
-	std::shared_ptr<CIdleSheduler>		dls = _tls_proxy.GetIdleSheduler();
-
-	INT32	winmsg_weight = 0;
-	INT32	threadmsg_weight = 0;
-	INT32	user_weight = 0;
-	INT32	timer_weight = 0;
-	INT32	idle_weight = 0;
-
 	while (!tcb->IsWaitExit())
 	{
-		winmsg_weight++;
-		threadmsg_weight++;
-		user_weight++;
-		timer_weight++;
-		idle_weight++;
-
-		if (winmsg_weight > 0)
+		MSG msg;
+		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 		{
-			winmsg_weight -= WINMSG_WEIGHT;
-
-			MSG msg;
-			if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+			if (msg.message == WM_QUIT)
 			{
-				if (msg.message == WM_QUIT)
-				{
-					SetExitLoop();
-					break;
-				}
-
-				TranslateMessage(&msg);
-				DispatchMessage(&msg);
-				//			Util::Log::Info(_T("CThreadWorkBase"), _T("RunLoop(%u), Msg: %u"), tid, msg.message);
+				SetExitLoop(TRUE);
+				break;
 			}
+
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+			//			Util::Log::Info(_T("CThreadWorkBase"), _T("RunLoop(%u), Msg: %u"), tid, msg.message);
 		}
-		
-		if (threadmsg_weight > 0)
+	
+		if (user_loop_func)
 		{
-			threadmsg_weight -= THREADMSG_WEIGHT;
-
-			size_t count = 0;
-			if (DispatchMsg(count) == TEC_SUCCEED)
-			{
-			}
-		}
-
-		if (user_loop_func && user_weight > 0)
-		{
-			user_weight -= level > 0 ? level : USERLOOP_WEIGHT;
-
 			user_loop_func();
 		}
 
-		if (timer_weight > 0)
-		{
-			timer_weight -= TIMER_WEIGHT;
-
-			UINT32 timer_count = tws->Trigger(tcb);
-			if (!timer_count)
-			{
-			}
-		}
-
-		if (idle_weight > 0)
-		{
-			idle_weight -= IDLE_WEIGHT;
-
-			UINT32 idle_count = dls->Trigger(tcb);
-			if (!idle_count)
-			{
-			}
-		}
+		DispatchInternal();
 
 		Sleep(1);
 	}
@@ -540,7 +464,7 @@ TaskErrorCode ThreadPoolV4::RunWinLoop(const loop_level_t& level/* = 0*/, const 
 	return TEC_SUCCEED;
 }
 
-TaskErrorCode ThreadPoolV4::SetExitLoop()
+TaskErrorCode ThreadPoolV4::SetExitLoop(const BOOL& enable)
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
@@ -549,7 +473,7 @@ TaskErrorCode ThreadPoolV4::SetExitLoop()
 	}
 	std::shared_ptr<ThreadCtrlBlock>	tcb = _tls_proxy.GetThreadCtrlBlock();
 
-	tcb->SetWaitExit();
+	tcb->SetWaitExit(enable);
 
 	return TEC_SUCCEED;
 }
@@ -727,7 +651,7 @@ ThreadPoolV4::CTaskTimerHelper::~CTaskTimerHelper()
 	SAFEFREENEW(_cb);
 }
 
-BOOL ThreadPoolV4::CTaskTimerHelper::Start(UINT32 millisecond, BOOL immediate/* = FALSE*/)
+BOOL ThreadPoolV4::CTaskTimerHelper::Start(const UINT32& millisecond, const BOOL& immediate/* = FALSE*/)
 {
 	ATLASSERT(_belongs_task_id == GetCurrentTaskID());
 

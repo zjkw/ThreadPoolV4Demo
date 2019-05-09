@@ -265,6 +265,6 @@ void task_msgdepot_t::Print(LPCTSTR prix)
 		_tprintf(_T("%sreceiver_id: %llu\n"), prix, it2->receiver_id);
 		_tprintf(_T("%sstamp: %lld\n"), prix, it2->stamp);
 		_tprintf(_T("%scmd: %u\n"), prix, it2->cmd);
-		_tprintf(_T("%sdata_size: %u\n"), prix, it2->data ? it2->data->size() : 0);
+//		_tprintf(_T("%sdata_size: %u\n"), prix, it2->data ? it2->data->size() : 0);
 	}
 }

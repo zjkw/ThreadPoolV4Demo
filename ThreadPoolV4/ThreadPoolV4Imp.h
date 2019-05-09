@@ -12,7 +12,7 @@ TaskErrorCode	tixPostMsg(const task_id_t& sender_id, const task_id_t& receiver_i
 TaskErrorCode	tixFetchMsgList(const task_id_t& id, std::shared_ptr<task_msgdepot_t>& channel);
 
 //调节线程数量
-void			tixSetClsAttri(const task_cls_t& cls, const UINT16& thread_num, const UINT32& unhandle_msg_timeout);
+void			tixSetClsAttri(const task_cls_t& cls, const UINT16& thread_limit_max_num, const UINT32& unhandle_msg_timeout);
 //将会强制同步等待池中所有线程关闭
 TaskErrorCode	tixClearManagedTask(const task_id_t& call_id);
 TaskErrorCode	tixSetTaskName(const task_id_t& id, const task_name_t& name);

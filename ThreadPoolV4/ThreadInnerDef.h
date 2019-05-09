@@ -21,8 +21,7 @@ public:
 	{
 	}
 	virtual BOOL	IsWaitExit() = 0;
-	virtual void	SetWaitExit() = 0;
-	virtual void	Reset() = 0;
+	virtual void	SetWaitExit(const BOOL& enable) = 0;
 	virtual void	Print(LPCTSTR prix) = 0;
 };
 
@@ -40,15 +39,10 @@ public:
 		std::unique_lock <std::mutex> lck(_mutex);
 		return _force_exit;
 	}
-	virtual void	SetWaitExit()
+	virtual void	SetWaitExit(const BOOL& enable)
 	{
 		std::unique_lock <std::mutex> lck(_mutex);
-		_force_exit = TRUE;
-	}
-	virtual void	Reset()
-	{
-		std::unique_lock <std::mutex> lck(_mutex);
-		_force_exit = FALSE;
+		_force_exit = enable;
 	}
 	virtual void	Print(LPCTSTR prix)
 	{
@@ -79,13 +73,9 @@ public:
 	{
 		return _force_exit;
 	}
-	virtual void	SetWaitExit()
+	virtual void	SetWaitExit(const BOOL& enable)
 	{
-		_force_exit = TRUE;
-	}
-	virtual void	Reset()
-	{
-		_force_exit = FALSE;
+		_force_exit = enable;
 	}
 	virtual void	Print(LPCTSTR prix)
 	{
@@ -219,9 +209,9 @@ public:
 
 	task_id_t		CreateIfInvalid();
 	void			DeleteIfValid();
-	TaskErrorCode	RegRubbishMsgSink(const task_sinkfunc_t& sinkfunc);	//没有接收器的消息进入垃圾箱
-	TaskErrorCode	UnregRubbishMsgSink();
-	TaskErrorCode	RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc);
+	TaskErrorCode	RegDefaultMsgSink(const task_sinkfunc_t& sinkfunc, const msgsink_userdata_t& userdata);	//没有接收器的消息进入垃圾箱
+	TaskErrorCode	UnregDefaultMsgSink();
+	TaskErrorCode	RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc, const msgsink_userdata_t& userdata);
 	TaskErrorCode	UnregMsgSink(const task_cmd_t& cmd);
 	TaskErrorCode	PostMsg(const task_id_t& receiver_task_id, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags = task_flag_null);//target_id为0表示广播
 	TaskErrorCode	DispatchMsg(size_t& count);
@@ -235,8 +225,23 @@ public:
 private:
 	task_id_t		_id;
 
-	std::map<task_cmd_t, task_sinkfunc_t>	_cmd_table;
-	task_sinkfunc_t							_rubbish_sink;
+	struct msgsink_pair
+	{
+		task_sinkfunc_t		sinkfunc;
+		msgsink_userdata_t	userdata;
+
+		msgsink_pair(const task_sinkfunc_t& sinkfunc_ = nullptr, const msgsink_userdata_t& userdata_ = nullptr) : sinkfunc(sinkfunc_), userdata(userdata_)
+		{
+		}
+		void Reset()
+		{
+			sinkfunc = nullptr;;
+			userdata = nullptr;
+		}
+	};
+
+	std::map<task_cmd_t, msgsink_pair>		_cmd_table;
+	msgsink_pair							_default_msgpair;
 	std::shared_ptr<ThreadCtrlBlock>		_tcb;
 	std::shared_ptr<CTimeWheelSheduler>		_tws;
 	std::shared_ptr<CIdleSheduler>			_dls;

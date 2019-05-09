@@ -27,15 +27,14 @@ struct managed_task_t
 };
 struct managed_pool_t
 {
-	UINT16	thread_num;
+	UINT16	thread_limit_max_num;
 	UINT32	unhandle_msg_timeout;	//暂不处理
-	BOOL	thread_init_finish;
 
 	std::map<thread_id_t, managed_thread_t>	threads;
 	std::map<task_id_t, managed_task_t>		active_tasks;
 	std::map<task_id_t, managed_task_t>		wait_tasks;
 
-	managed_pool_t() : thread_num(DEFAULT_THREAD_NUM_BY_CLS), unhandle_msg_timeout(0), thread_init_finish(FALSE) {}
+	managed_pool_t() : thread_limit_max_num(DEFAULT_THREAD_NUM_BY_CLS), unhandle_msg_timeout(0) {}
 };
 
 static std::mutex															_mutex;
@@ -112,13 +111,9 @@ static TaskErrorCode StaticUpdateTask_InLock(const task_id_t& id, const task_nam
 	return TEC_SUCCEED;
 }
 
+//空的name将会填写一个默认的名字
 static TaskErrorCode StaticSetTaskName_InLock(const task_id_t& id, const task_name_t& name)
 {
-	if (name.empty())
-	{
-		return TEC_INVALID_ARG;
-	}
-
 	//名称必须是一个字符串，而不是一个buffer，因为后面的_tcsicmp比较函数是字符串比较
 	if (_tcslen(name.c_str()) != name.size())
 	{
@@ -151,7 +146,11 @@ static TaskErrorCode StaticSetTaskName_InLock(const task_id_t& id, const task_na
 	{
 		TCHAR sz[64];
 		_sntprintf_s(sz, _countof(sz), _T("%lld"), id);
-		if (_tcsicmp(name.c_str(), sz))
+		if (name.empty())
+		{
+			return StaticUpdateTask_InLock(id, sz);
+		}
+		else if (_tcsicmp(name.c_str(), sz))
 		{
 			return TEC_INVALID_ARG;
 		}
@@ -187,15 +186,22 @@ static TaskErrorCode StaticGetTaskByName_InLock(const task_name_t& name, task_id
 }
 
 ///////////////托管任务/线程池辅助管理
-static void	ManagedThreadRoutine()
+static UINT WINAPI  ManagedThreadRoutine()
 {
 	DWORD dwThreadID = GetCurrentThreadId();
 
 	//外部确保：线程存续期内，CLS结构体必然存在
 	std::shared_ptr<managed_pool_t>	cls_ptr = nullptr;
 	managed_thread_t*	thread_item_ptr = nullptr;
+	while(!thread_item_ptr)
 	{
+		Sleep(1);//不能使用_cond.wait(lck);是因为通知触发后我们可能还没进锁，即意料中的通知对我们没有价值，除非非触发源触发
+
 		std::unique_lock <std::mutex> lck(_mutex);
+		if (_exit_flag)
+		{
+			break;
+		}
 
 		std::map<thread_id_t, std::wstring>::iterator it = _managed_thread_index.find(dwThreadID);
 		if (it != _managed_thread_index.end())
@@ -212,18 +218,7 @@ static void	ManagedThreadRoutine()
 				}
 			}
 		}
-
-		//等待正式运行许可
-		if (cls_ptr)
-		{
-			while (!cls_ptr->thread_init_finish)
-			{
-				_cond.wait(lck);
-			}
-		}
 	}
-	ATLASSERT(cls_ptr);
-	ATLASSERT(thread_item_ptr);
 
 	if (thread_item_ptr)
 	{
@@ -240,6 +235,8 @@ static void	ManagedThreadRoutine()
 					break;
 				}
 
+				size_t ask_thread_num = min(cls_ptr->wait_tasks.size() + cls_ptr->active_tasks.size(), cls_ptr->thread_limit_max_num);
+
 				//从任务队列选择一个运行	
 				std::map<task_id_t, managed_task_t>::iterator it = cls_ptr->wait_tasks.begin();
 				if (it != cls_ptr->wait_tasks.end())
@@ -251,7 +248,8 @@ static void	ManagedThreadRoutine()
 					second.thread_item_ptr = thread_item_ptr;
 					cls_ptr->active_tasks[first] = second;
 				}
-				else if (cls_ptr->thread_num < cls_ptr->threads.size())
+				//只要min(任务数，线程数上限阈值) < 当前实际线程数
+				else if (ask_thread_num < cls_ptr->threads.size())
 				{
 					//直接退出
 					if (cls_ptr)
@@ -259,7 +257,7 @@ static void	ManagedThreadRoutine()
 						cls_ptr->threads.erase(dwThreadID);
 					}
 					_managed_thread_index.erase(dwThreadID);
-					return;
+					return 0;
 				}
 				else 
 				{
@@ -296,61 +294,66 @@ static void	ManagedThreadRoutine()
 		}
 		_managed_thread_index.erase(dwThreadID);
 	}
+
+	return 0;
 }
 
-static BOOL CreatePoolIfNotExist_InLock(const task_cls_t& cls, const UINT16& thread_num = DEFAULT_THREAD_NUM_BY_CLS, const UINT32& unhandle_msg_timeout = DEFAULT_UNHANDLMSG_TIMEOUT_BY_CLS)
+//task_num表示任务数，当为0表示忽略此参数
+static BOOL CreatePoolIfNotExist_InLock(std::unique_lock<std::mutex>& lck, const task_cls_t& cls, const size_t& task_num, const UINT16& thread_limit_max_num = DEFAULT_THREAD_NUM_BY_CLS, const UINT32& unhandle_msg_timeout = DEFAULT_UNHANDLMSG_TIMEOUT_BY_CLS)
 {
-	//创建数据结构
+	size_t real_thread_num = min(task_num, thread_limit_max_num);
+
+	//预备创建线程
+	size_t exist_thread_num = 0;
 	std::map<std::wstring, std::shared_ptr<managed_pool_t>, StrCaseCmp>::iterator it = _managed_cls_table.find(cls);
+	if (it != _managed_cls_table.end())
+	{
+		exist_thread_num = it->second->threads.size();
+	}
+
+	//解锁，因为_beginthreadex/线程创建函数会锁定操作系统内部线程管理数据结构，如果恰好此时一个我们托管线程退出，会进入CThreadLocalProxy析构，
+	//这个析构会通过本库的全局锁_mutex清理相关数据，但这个锁被已被锁定，导致死锁
+	lck.unlock();
+
+	std::vector<std::shared_ptr<std::thread>>	thread_list;
+	for (size_t i = exist_thread_num; i < real_thread_num; i++)
+	{
+		std::shared_ptr<std::thread> thread_obj = std::make_shared<std::thread>(&ManagedThreadRoutine);
+		
+		thread_list.push_back(thread_obj);
+	}
+
+	lck.lock();
+
+	//关联数据结构
+	it = _managed_cls_table.find(cls);
 	if (it == _managed_cls_table.end())
 	{
 		_managed_cls_table[cls] = std::make_shared<managed_pool_t>();
 		it = _managed_cls_table.find(cls);
-
-		//构造线程对象
-		for (UINT16 i = 0; i < thread_num; i++)
-		{
-			managed_thread_t ti;
-
-			std::shared_ptr<std::thread> thread_obj = std::make_shared<std::thread>(&ManagedThreadRoutine);
-			thread_id_t dwThreadID = GetThreadId((HANDLE)thread_obj->native_handle());
-			ti.thread_ctrlblock = std::make_shared<ManagedThreadCtrlBlock>(dwThreadID);
-			thread_obj->detach();
-
-			it->second->threads[dwThreadID] = ti;
-			_managed_thread_index[dwThreadID] = cls;
-		}
-
-		it->second->thread_num = thread_num;
-		it->second->unhandle_msg_timeout = unhandle_msg_timeout;
-
-		//通知挂起的线程，可能超额的要酌情退出
-		it->second->thread_init_finish = TRUE;
+		ATLASSERT(it != _managed_cls_table.end());
 	}
-	else
+
+	for (std::vector<std::shared_ptr<std::thread>>::iterator it2 = thread_list.begin(); it2 != thread_list.end(); it2++)
 	{
-		for (UINT16 i = it->second->thread_num; i < thread_num; i++)
-		{
-			managed_thread_t ti;
+		managed_thread_t ti;
+				
+		thread_id_t dwThreadID = GetThreadId((HANDLE)(*it2)->native_handle());
+		ti.thread_ctrlblock = std::make_shared<ManagedThreadCtrlBlock>(dwThreadID);
+		(*it2)->detach();
 
-			std::shared_ptr<std::thread> thread_obj = std::make_shared<std::thread>(&ManagedThreadRoutine);
-			thread_id_t dwThreadID = GetThreadId((HANDLE)thread_obj->native_handle());
-			ti.thread_ctrlblock = std::make_shared<ManagedThreadCtrlBlock>(dwThreadID);
-			thread_obj->detach();
-
-			it->second->threads[dwThreadID] = ti;
-			_managed_thread_index[dwThreadID] = cls;
-		}
-		it->second->thread_num = thread_num;
-		it->second->unhandle_msg_timeout = unhandle_msg_timeout;
+		it->second->threads[dwThreadID] = ti;
+		_managed_thread_index[dwThreadID] = cls;
 	}
+	it->second->thread_limit_max_num = thread_limit_max_num;
+	it->second->unhandle_msg_timeout = unhandle_msg_timeout;
 
 	_cond.notify_all();
 
 	return TRUE;
 }
 
-static TaskErrorCode PoolAddManagedTask_InLock(const task_cls_t& cls, const task_id_t& id, const task_param_t& param, const task_routinefunc_t& routine)
+static TaskErrorCode PoolAddManagedTask_InLock(std::unique_lock<std::mutex>& lck, const task_cls_t& cls, const task_id_t& id, const task_param_t& param, const task_routinefunc_t& routine)
 {
 	task_cls_t cls_std = GetStdCls(cls);
 
@@ -359,23 +362,32 @@ static TaskErrorCode PoolAddManagedTask_InLock(const task_cls_t& cls, const task
 		return TEC_EXIT_STATE;
 	}
 
-	if (!CreatePoolIfNotExist_InLock(cls_std))
-	{
-		return TEC_ALLOC_FAILED;
-	}
+	size_t task_num = 1;
+	UINT16 thread_limit_max_num = DEFAULT_THREAD_NUM_BY_CLS;
+	UINT32 unhandle_msg_timeout = DEFAULT_UNHANDLMSG_TIMEOUT_BY_CLS;
 
 	std::map<std::wstring, std::shared_ptr<managed_pool_t>, StrCaseCmp>::iterator it2 = _managed_cls_table.find(cls_std);
-	if (it2 == _managed_cls_table.end())
+	if (it2 != _managed_cls_table.end())
+	{
+		std::shared_ptr<managed_pool_t> cls_thread_pool = it2->second;
+		task_num += cls_thread_pool->active_tasks.size() + cls_thread_pool->wait_tasks.size();
+		thread_limit_max_num = cls_thread_pool->thread_limit_max_num;
+		unhandle_msg_timeout = cls_thread_pool->unhandle_msg_timeout;
+	}
+	
+	if (!CreatePoolIfNotExist_InLock(lck, cls_std, task_num, thread_limit_max_num, unhandle_msg_timeout))
 	{
 		return TEC_ALLOC_FAILED;
 	}
-
+	
 	//托管
 	managed_task_t	ti;
 	ti.cls = cls_std;
 	ti.param = param;
 	ti.routine = routine;
 
+	it2 = _managed_cls_table.find(cls_std);
+	ATLASSERT(it2 != _managed_cls_table.end());
 	it2->second->wait_tasks[id] = ti;
 	_managed_task_index[id] = cls_std;
 
@@ -417,7 +429,7 @@ static TaskErrorCode PoolDelManagedTask_InLock(const task_id_t& call_id, const t
 						return TEC_MANAGED_DELETE_SELF;
 					}
 					ATLASSERT(it3->second.thread_item_ptr);
-					it3->second.thread_item_ptr->thread_ctrlblock->SetWaitExit();
+					it3->second.thread_item_ptr->thread_ctrlblock->SetWaitExit(TRUE);
 
 					return TEC_SUCCEED;
 				}
@@ -604,7 +616,7 @@ TaskErrorCode	tixGetTaskState(const task_id_t& id, TaskWorkState& state)
 	return TEC_SUCCEED;
 }
 
-void			tixSetClsAttri(const task_cls_t& cls, const UINT16& thread_num, const UINT32& unhandle_msg_timeout)
+void			tixSetClsAttri(const task_cls_t& cls, const UINT16& thread_limit_max_num, const UINT32& unhandle_msg_timeout)
 {
 	task_cls_t cls_std = GetStdCls(cls);
 
@@ -616,7 +628,7 @@ void			tixSetClsAttri(const task_cls_t& cls, const UINT16& thread_num, const UIN
 
 	//tbd unhandle_msg_timeout
 
-	CreatePoolIfNotExist_InLock(cls_std, thread_num, unhandle_msg_timeout);
+	CreatePoolIfNotExist_InLock(lck, cls_std, 0, thread_limit_max_num, unhandle_msg_timeout);
 }
 
 //将会强制同步等待池中所有线程关闭
@@ -645,7 +657,7 @@ TaskErrorCode			tixClearManagedTask(const task_id_t& call_id)
 		{
 			for (std::map<thread_id_t, managed_thread_t>::iterator it2 = it->second->threads.begin(); it2 != it->second->threads.end(); it2++)
 			{
-				it2->second.thread_ctrlblock->SetWaitExit();
+				it2->second.thread_ctrlblock->SetWaitExit(TRUE);
 			}
 		}
 		//2，通知所有挂起线程
@@ -653,15 +665,42 @@ TaskErrorCode			tixClearManagedTask(const task_id_t& call_id)
 	}
 
 	//所有托管线程退出
+	MSG msg;
+	BOOL call_exit_msg = FALSE;
 	while (true)
 	{
-		Sleep(10);
+		//可能需要窗口消息交互，一个例子是父线窗口是父窗口，子线程是子窗口，当通知子线程退出时候，
+		//父线程在此等待，但子线程窗口删除过程需要和父线程交互，导致子线程无法DestroyWindow，一直
+		//等待父线程响应，而父线程又在等待子线程退出...
+
+		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+		{
+			if (msg.message == WM_QUIT)
+			{
+				SetExitLoop(TRUE);
+				call_exit_msg = TRUE;
+				break;
+			}
+
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+			//			Util::Log::Info(_T("CThreadWorkBase"), _T("RunLoop(%u), Msg: %u"), tid, msg.message);
+		}
+		else
+		{
+			Sleep(1);
+		}
 
 		std::unique_lock <std::mutex> lck(_mutex);
 		if (_managed_thread_index.empty())
 		{
 			break;
 		}
+	}
+
+	if (call_exit_msg)
+	{
+		PostQuitMessage(msg.wParam);
 	}
 
 	_managed_task_index.clear();
@@ -707,7 +746,7 @@ TaskErrorCode tixAddManagedTask(const task_cls_t& cls, const task_name_t& name, 
 
 	if (TEC_SUCCEED == tec)
 	{
-		tec = PoolAddManagedTask_InLock(cls, id, param, routine);
+		tec = PoolAddManagedTask_InLock(lck, cls, id, param, routine);
 	}
 	if (TEC_SUCCEED != tec)
 	{
@@ -720,7 +759,6 @@ TaskErrorCode tixAddManagedTask(const task_cls_t& cls, const task_name_t& name, 
 //是否等待目标关闭，需要明确的是如果自己关闭自己或关闭非托管线程，将会是强制改成异步																																									
 TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& target_id)
 {
-	//删除任务无需检查是否设置_exit_flag，因为其是删除操作
 	TaskErrorCode err = TEC_SUCCEED;
 
 	{
@@ -748,7 +786,7 @@ TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& targe
 			{
 				if (msg.message == WM_QUIT)
 				{
-					SetExitLoop();
+					SetExitLoop(TRUE);
 					call_exit_msg = TRUE;
 					break;
 				}
@@ -809,9 +847,8 @@ TaskErrorCode tixPrintMeta()
 	for (std::map<std::wstring, std::shared_ptr<managed_pool_t>, StrCaseCmp>::iterator it = _managed_cls_table.begin(); it != _managed_cls_table.end(); it++)
 	{
 		_tprintf(_T("	cls_name: %s\n"), it->first.c_str());
-		_tprintf(_T("	thread_num: %u\n"), it->second->thread_num);
+		_tprintf(_T("	thread_limit_max_num: %u\n"), it->second->thread_limit_max_num);
 		_tprintf(_T("	unhandle_msg_timeout: %u\n"), it->second->unhandle_msg_timeout);
-		_tprintf(_T("	thread_init_finish: %d\n"), it->second->thread_init_finish);
 
 		_tprintf(_T("		threads: \n"));
 		for (std::map<thread_id_t, managed_thread_t>::iterator it2 = it->second->threads.begin(); it2 != it->second->threads.end(); it2++)
