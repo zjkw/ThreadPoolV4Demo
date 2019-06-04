@@ -334,6 +334,12 @@ TaskErrorCode ThreadPoolV4::UnregMsgSink(const task_cmd_t& cmd)
 //ÄÚ²¿Êý¾Ý·Ö·¢£¬Íâ²¿Ö¸Ê¾ÊÇ·ñ´¥·¢idle£¬·µ»Ø±¾º¯ÊýÊÇ·ñÊµ¼ÊÓÐ´¦ÀíÒµÎñ
 TaskErrorCode	ThreadPoolV4::DispatchInternal(const BOOL& triggle_idle/* = TRUE*/, BOOL* real_empty_handle/* = nullptr*/)
 {
+	task_id_t id = _tls_proxy.CreateIfInvalid();
+	if (id == task_id_null)
+	{
+		return TEC_ALLOC_FAILED;
+	}
+
 	std::shared_ptr<ThreadCtrlBlock>	tcb = _tls_proxy.GetThreadCtrlBlock();
 	std::shared_ptr<CTimeWheelSheduler>	tws = _tls_proxy.GetTimeWheelSheduler();
 	std::shared_ptr<CIdleSheduler>		dls = _tls_proxy.GetIdleSheduler();
@@ -349,7 +355,7 @@ TaskErrorCode	ThreadPoolV4::DispatchInternal(const BOOL& triggle_idle/* = TRUE*/
 
 	if (real_empty_handle)
 	{
-		*real_empty_handle = msg_count || timer_count || idler_count;
+		*real_empty_handle = !!msg_count || !!timer_count || !!idler_count;
 	}
 
 	return TEC_SUCCEED;
@@ -361,14 +367,14 @@ void			ThreadPoolV4::SetManagedClsAttri(const task_cls_t& cls, const UINT16& thr
 	tixSetClsAttri(cls, thread_limit_max_num, unhandle_msg_timeout);
 }
 
-TaskErrorCode ThreadPoolV4::ClearManagedTask()//½«»áÇ¿ÖÆÍ¬²½µÈ´ý³ØÖÐËùÓÐÏß³Ì¹Ø±Õ
+TaskErrorCode ThreadPoolV4::ClearManagedTask(const task_userloop_t& user_loop_func/* = nullptr*/)//½«»áÇ¿ÖÆÍ¬²½µÈ´ý³ØÖÐËùÓÐÏß³Ì¹Ø±Õ
 {
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
 	{
 		return TEC_ALLOC_FAILED;
 	}
-	return tixClearManagedTask(id);
+	return tixClearManagedTask(id, user_loop_func);
 }
 
 task_id_t ThreadPoolV4::GetCurrentTaskID()
@@ -498,7 +504,7 @@ TaskErrorCode ThreadPoolV4::AddManagedTask(const task_cls_t& cls, const task_nam
 	return 	tixAddManagedTask(cls, name, param, routine, id);
 }
 
-TaskErrorCode ThreadPoolV4::DelManagedTask(const task_id_t& id)//ÊÇ·ñµÈ´ýÄ¿±ê¹Ø±Õ£¬ÐèÒªÃ÷È·µÄÊÇÈç¹û×Ô¼º¹Ø±Õ×Ô¼º»ò¹Ø±Õ·ÇÍÐ¹ÜÏß³Ì£¬½«»áÊÇÇ¿ÖÆ¸Ä³ÉÒì²½
+TaskErrorCode ThreadPoolV4::DelManagedTask(const task_id_t& id, const task_userloop_t& user_loop_func/* = nullptr*/)//ÊÇ·ñµÈ´ýÄ¿±ê¹Ø±Õ£¬ÐèÒªÃ÷È·µÄÊÇÈç¹û×Ô¼º¹Ø±Õ×Ô¼º»ò¹Ø±Õ·ÇÍÐ¹ÜÏß³Ì£¬½«»áÊÇÇ¿ÖÆ¸Ä³ÉÒì²½
 {
 	//²ÎÊý¼ì²é
 
@@ -509,7 +515,7 @@ TaskErrorCode ThreadPoolV4::DelManagedTask(const task_id_t& id)//ÊÇ·ñµÈ´ýÄ¿±ê¹Ø±
 		return TEC_ALLOC_FAILED;
 	}
 
-	return 	tixDelManagedTask(call_id, id);
+	return 	tixDelManagedTask(call_id, id, user_loop_func);
 }
 
 TaskErrorCode	ThreadPoolV4::GetTaskState(const task_id_t& id, TaskWorkState& state)

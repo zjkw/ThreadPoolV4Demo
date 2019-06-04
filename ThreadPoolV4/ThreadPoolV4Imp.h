@@ -14,7 +14,7 @@ TaskErrorCode	tixFetchMsgList(const task_id_t& id, std::shared_ptr<task_msgdepot
 //调节线程数量
 void			tixSetClsAttri(const task_cls_t& cls, const UINT16& thread_limit_max_num, const UINT32& unhandle_msg_timeout);
 //将会强制同步等待池中所有线程关闭
-TaskErrorCode	tixClearManagedTask(const task_id_t& call_id);
+TaskErrorCode	tixClearManagedTask(const task_id_t& call_id, const task_userloop_t& user_loop_func);
 TaskErrorCode	tixSetTaskName(const task_id_t& id, const task_name_t& name);
 TaskErrorCode	tixSetTaskAttri(const task_id_t& id, const UINT32& unhandle_msg_timeout);
 TaskErrorCode	tixGetTaskName(const task_id_t& id, task_name_t& name);
@@ -22,7 +22,7 @@ TaskErrorCode	tixGetTaskName(const task_id_t& id, task_name_t& name);
 //任务管理
 TaskErrorCode	tixAddManagedTask(const task_cls_t& cls, const task_name_t& name, const task_param_t& param, const task_routinefunc_t& routine, task_id_t& id);	//调节任务
 //是否等待目标关闭，需要明确的是如果自己关闭自己或关闭非托管线程，将会是强制改成异步																																									
-TaskErrorCode	tixDelManagedTask(const task_id_t& call_id, const task_id_t& target_id);
+TaskErrorCode	tixDelManagedTask(const task_id_t& call_id, const task_id_t& target_id, const task_userloop_t& user_loop_func);
 TaskErrorCode	tixGetTaskState(const task_id_t& id, TaskWorkState& state);
 TaskErrorCode	tixGetTaskByName(const task_name_t& name, task_id_t& id);
 

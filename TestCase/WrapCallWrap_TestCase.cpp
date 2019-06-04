@@ -27,7 +27,7 @@ void	CWrapCallWrap_TestCase::DoTest()
 void	CWrapCallWrap_TestCase::CallerRoutine(const task_id_t& self_id, const task_param_t& param)
 {
 	//3, Native线程注册结果函数，用于获取Wrap线程结果	
-	TaskErrorCode tec = RegMsgSink(CMMNO_FIBON_RES, std::bind(&CWrapCallWrap_TestCase::CallFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+	TaskErrorCode tec = RegMsgSink(CMMNO_FIBON_RES, std::bind(&CWrapCallWrap_TestCase::CallFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), nullptr);
 
 	task_id_t id = 0;
 	tec = AddManagedTask(_T("Test"), _T("Worker"), nullptr, std::bind(&CWrapCallWrap_TestCase::WorkRoutine, this, std::placeholders::_1, std::placeholders::_2), id);
@@ -44,7 +44,7 @@ void	CWrapCallWrap_TestCase::CallerRoutine(const task_id_t& self_id, const task_
 void	CWrapCallWrap_TestCase::WorkRoutine(const task_id_t& self_id, const task_param_t& param)
 {
 	//5，Wrap线程注册任务函数，用于接收对应任务
-	TaskErrorCode tec = RegMsgSink(CMMNO_FIBON_REQ, std::bind(&CWrapCallWrap_TestCase::WorkFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+	TaskErrorCode tec = RegMsgSink(CMMNO_FIBON_REQ, std::bind(&CWrapCallWrap_TestCase::WorkFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), nullptr);
 
 	//6，消息Pump运作
 	RunBaseLoop();

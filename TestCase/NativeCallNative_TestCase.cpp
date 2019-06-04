@@ -38,8 +38,8 @@ void	CNativeCallNative_TestCase::NativeCallerRoutinue()
 
 	//2，Native线程创建Wrap(托管)线程
 	//3, Native线程注册结果函数，用于获取Wrap线程结果	
-	TaskErrorCode tec = RegMsgSink(CMMNO_FIBON_RES, std::bind(&CNativeCallNative_TestCase::CallFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-	tec = RegMsgSink(CMMNO_WORK_READY, std::bind(&CNativeCallNative_TestCase::CallFunc_WorkReadySink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+	TaskErrorCode tec = RegMsgSink(CMMNO_FIBON_RES, std::bind(&CNativeCallNative_TestCase::CallFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), nullptr);
+	tec = RegMsgSink(CMMNO_WORK_READY, std::bind(&CNativeCallNative_TestCase::CallFunc_WorkReadySink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), nullptr);
 
 	RunBaseLoop();
 }
@@ -49,13 +49,15 @@ void	CNativeCallNative_TestCase::NativeWorkerRoutinue()
 {
 	SetCurrentName(_T("Work_Thread"));
 	//5，Wrap线程注册任务函数，用于接收对应任务
-	TaskErrorCode tec = RegMsgSink(CMMNO_FIBON_REQ, std::bind(&CNativeCallNative_TestCase::WorkFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+	TaskErrorCode tec = RegMsgSink(CMMNO_FIBON_REQ, std::bind(&CNativeCallNative_TestCase::WorkFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), nullptr);
 
 	PostMsg(_T("Caller_Thread"), CMMNO_WORK_READY, nullptr);
 
 	//6，消息Pump运作
 	RunBaseLoop();
 }
+
+//CefPostTask(UI_THREAD, std::bind(&CNativeCallNative_TestCase::WorkFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3))
 
 void CNativeCallNative_TestCase::WorkFunc_FibonMathSink(const task_id_t& sender_id, const task_cmd_t& cmd, const task_data_t& data)	//接收者注册的回调函数
 {

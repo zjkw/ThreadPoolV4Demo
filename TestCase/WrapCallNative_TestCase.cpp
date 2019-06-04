@@ -32,8 +32,8 @@ void	CWrapCallNative_TestCase::DoTest()
 void	CWrapCallNative_TestCase::NativeCallerRoutinue(const task_id_t& self_id, const task_param_t& param)
 {
 	//3，Wrap线程注册任务函数，用于接收对应任务
-	TaskErrorCode tec = RegMsgSink(CMMNO_FIBON_RES, std::bind(&CWrapCallNative_TestCase::CallFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-	tec = RegMsgSink(CMMNO_WORK_READY, std::bind(&CWrapCallNative_TestCase::CallFunc_WorkReadySink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+	TaskErrorCode tec = RegMsgSink(CMMNO_FIBON_RES, std::bind(&CWrapCallNative_TestCase::CallFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), nullptr);
+	tec = RegMsgSink(CMMNO_WORK_READY, std::bind(&CWrapCallNative_TestCase::CallFunc_WorkReadySink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), nullptr);
 
 	ATLASSERT(!_work_thread);
 	_work_thread = std::make_shared<std::thread>(&CWrapCallNative_TestCase::WorkRoutine, this);
@@ -46,7 +46,7 @@ void	CWrapCallNative_TestCase::WorkRoutine()
 {
 	//5，Wrap线程注册任务函数，用于接收对应任务
 	SetCurrentName(_T("Work_Thread"));
-	TaskErrorCode tec = RegMsgSink(CMMNO_FIBON_REQ, std::bind(&CWrapCallNative_TestCase::WorkFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+	TaskErrorCode tec = RegMsgSink(CMMNO_FIBON_REQ, std::bind(&CWrapCallNative_TestCase::WorkFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), nullptr);
 
 	PostMsg(_T("Caller"), CMMNO_WORK_READY, nullptr);
 

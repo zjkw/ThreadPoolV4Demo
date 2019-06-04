@@ -186,7 +186,7 @@ static TaskErrorCode StaticGetTaskByName_InLock(const task_name_t& name, task_id
 }
 
 ///////////////托管任务/线程池辅助管理
-static UINT WINAPI  ManagedThreadRoutine()
+static void  ManagedThreadRoutine()
 {
 	DWORD dwThreadID = GetCurrentThreadId();
 
@@ -195,8 +195,6 @@ static UINT WINAPI  ManagedThreadRoutine()
 	managed_thread_t*	thread_item_ptr = nullptr;
 	while(!thread_item_ptr)
 	{
-		Sleep(1);//不能使用_cond.wait(lck);是因为通知触发后我们可能还没进锁，即意料中的通知对我们没有价值，除非非触发源触发
-
 		std::unique_lock <std::mutex> lck(_mutex);
 		if (_exit_flag)
 		{
@@ -217,6 +215,11 @@ static UINT WINAPI  ManagedThreadRoutine()
 					thread_item_ptr = &it3->second;
 				}
 			}
+		}
+
+		if (!thread_item_ptr)
+		{
+			_cond.wait(lck);
 		}
 	}
 
@@ -257,7 +260,7 @@ static UINT WINAPI  ManagedThreadRoutine()
 						cls_ptr->threads.erase(dwThreadID);
 					}
 					_managed_thread_index.erase(dwThreadID);
-					return 0;
+					return;
 				}
 				else 
 				{
@@ -295,7 +298,7 @@ static UINT WINAPI  ManagedThreadRoutine()
 		_managed_thread_index.erase(dwThreadID);
 	}
 
-	return 0;
+	return;
 }
 
 //task_num表示任务数，当为0表示忽略此参数
@@ -311,8 +314,8 @@ static BOOL CreatePoolIfNotExist_InLock(std::unique_lock<std::mutex>& lck, const
 		exist_thread_num = it->second->threads.size();
 	}
 
-	//解锁，因为_beginthreadex/线程创建函数会锁定操作系统内部线程管理数据结构，如果恰好此时一个我们托管线程退出，会进入CThreadLocalProxy析构，
-	//这个析构会通过本库的全局锁_mutex清理相关数据，但这个锁被已被锁定，导致死锁
+	//手工解锁："一个我们托管线程 X 退出时候"持有了"操作系统内部线程管理数据结构"锁，而当此时_beginthreadex/其他线程创建函数所在的线程 Y 此刻就会等待此锁，
+	//而 X 退出时候会进入CThreadLocalProxy析构，这个析构会通过本库的全局锁_mutex清理相关数据，但此_mutex被已被 Y 拥有，导致 X 和 Y 死锁
 	lck.unlock();
 
 	std::vector<std::shared_ptr<std::thread>>	thread_list;
@@ -632,7 +635,7 @@ void			tixSetClsAttri(const task_cls_t& cls, const UINT16& thread_limit_max_num,
 }
 
 //将会强制同步等待池中所有线程关闭
-TaskErrorCode			tixClearManagedTask(const task_id_t& call_id)
+TaskErrorCode			tixClearManagedTask(const task_id_t& call_id, const task_userloop_t& user_loop_func)
 {
 	//1，置位, 因为需要等待，这意味着其他线程也能继续访问
 	{
@@ -665,26 +668,20 @@ TaskErrorCode			tixClearManagedTask(const task_id_t& call_id)
 	}
 
 	//所有托管线程退出
-	MSG msg;
-	BOOL call_exit_msg = FALSE;
+	BOOL loop_again = TRUE;
 	while (true)
 	{
-		//可能需要窗口消息交互，一个例子是父线窗口是父窗口，子线程是子窗口，当通知子线程退出时候，
-		//父线程在此等待，但子线程窗口删除过程需要和父线程交互，导致子线程无法DestroyWindow，一直
-		//等待父线程响应，而父线程又在等待子线程退出...
-
-		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+		//可能需要窗口消息交互，一个例子是：
+		//父线窗口有父窗口，子线程有其子窗口，当父线程删除子线程的时候，父线程在此等待子线程退出，但子线程窗口删除过程需要和父窗口交互，
+		//所以会一直等待父线程的父窗口响应，如果父窗口是"硬核"等待子窗口，那么就等于死锁了
+		//这提示我们：关键在于父窗口/线程需要做到在等待过程中响应子线程的必要消息，故父线程在等待中要有消息循环放开口子
+		if (user_loop_func && loop_again)
 		{
-			if (msg.message == WM_QUIT)
+			loop_again = user_loop_func();
+			if (!loop_again)
 			{
 				SetExitLoop(TRUE);
-				call_exit_msg = TRUE;
-				break;
 			}
-
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-			//			Util::Log::Info(_T("CThreadWorkBase"), _T("RunLoop(%u), Msg: %u"), tid, msg.message);
 		}
 		else
 		{
@@ -697,12 +694,7 @@ TaskErrorCode			tixClearManagedTask(const task_id_t& call_id)
 			break;
 		}
 	}
-
-	if (call_exit_msg)
-	{
-		PostQuitMessage(msg.wParam);
-	}
-
+	
 	_managed_task_index.clear();
 	_managed_cls_table.clear();
 
@@ -757,7 +749,7 @@ TaskErrorCode tixAddManagedTask(const task_cls_t& cls, const task_name_t& name, 
 }
 																																									
 //是否等待目标关闭，需要明确的是如果自己关闭自己或关闭非托管线程，将会是强制改成异步																																									
-TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& target_id)
+TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& target_id, const task_userloop_t& user_loop_func)
 {
 	TaskErrorCode err = TEC_SUCCEED;
 
@@ -774,26 +766,19 @@ TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& targe
 
 	if(err == TEC_SUCCEED)
 	{
-		BOOL call_exit_msg = FALSE;
-		MSG msg;
+		BOOL loop_again = TRUE;
 		while (true)
 		{			
 			//可能需要窗口消息交互，一个例子是父线窗口是父窗口，子线程是子窗口，当通知子线程退出时候，
 			//父线程在此等待，但子线程窗口删除过程需要和父线程交互，导致子线程无法DestroyWindow，一直
 			//等待父线程响应，而父线程又在等待子线程退出...
-
-			if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+			if (user_loop_func && loop_again)
 			{
-				if (msg.message == WM_QUIT)
+				loop_again = user_loop_func();
+				if (!loop_again)
 				{
 					SetExitLoop(TRUE);
-					call_exit_msg = TRUE;
-					break;
 				}
-
-				TranslateMessage(&msg);
-				DispatchMessage(&msg);
-				//			Util::Log::Info(_T("CThreadWorkBase"), _T("RunLoop(%u), Msg: %u"), tid, msg.message);
 			}
 			else
 			{
@@ -808,11 +793,6 @@ TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& targe
 		}
 
 		tixDeleteUnmanagedTask(target_id);
-
-		if (call_exit_msg)
-		{
-			PostQuitMessage(msg.wParam);
-		}
 	}	
 
 	return err;
