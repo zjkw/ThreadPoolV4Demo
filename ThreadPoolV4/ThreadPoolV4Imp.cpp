@@ -238,7 +238,9 @@ static void  ManagedThreadRoutine()
 					break;
 				}
 
-				size_t ask_thread_num = min(cls_ptr->wait_tasks.size() + cls_ptr->active_tasks.size(), cls_ptr->thread_limit_max_num);
+				//任务先添加，因为线程池的线程退出也依赖任务数，如果任务后面添加可能导致线程数全部退出，任务无线程执行
+				size_t task_num = cls_ptr->wait_tasks.size() + cls_ptr->active_tasks.size();
+				size_t ask_thread_num = min(task_num, cls_ptr->thread_limit_max_num);
 
 				//从任务队列选择一个运行	
 				std::map<task_id_t, managed_task_t>::iterator it = cls_ptr->wait_tasks.begin();
@@ -378,11 +380,6 @@ static TaskErrorCode PoolAddManagedTask_InLock(std::unique_lock<std::mutex>& lck
 		unhandle_msg_timeout = cls_thread_pool->unhandle_msg_timeout;
 	}
 	
-	if (!CreatePoolIfNotExist_InLock(lck, cls_std, task_num, thread_limit_max_num, unhandle_msg_timeout))
-	{
-		return TEC_ALLOC_FAILED;
-	}
-	
 	//托管
 	managed_task_t	ti;
 	ti.cls = cls_std;
@@ -394,6 +391,11 @@ static TaskErrorCode PoolAddManagedTask_InLock(std::unique_lock<std::mutex>& lck
 	it2->second->wait_tasks[id] = ti;
 	_managed_task_index[id] = cls_std;
 
+	//任务先添加，因为线程池的线程退出也依赖任务数，如果任务后面添加可能导致线程数全部退出，任务无线程执行
+	if (!CreatePoolIfNotExist_InLock(lck, cls_std, task_num, thread_limit_max_num, unhandle_msg_timeout))
+	{
+		return TEC_ALLOC_FAILED;
+	}
 	_cond.notify_all();
 
 	return TEC_SUCCEED;
