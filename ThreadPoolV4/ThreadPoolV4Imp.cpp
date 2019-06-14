@@ -379,6 +379,10 @@ static TaskErrorCode PoolAddManagedTask_InLock(std::unique_lock<std::mutex>& lck
 		thread_limit_max_num = cls_thread_pool->thread_limit_max_num;
 		unhandle_msg_timeout = cls_thread_pool->unhandle_msg_timeout;
 	}
+	else
+	{
+		_managed_cls_table[cls_std] = std::make_shared<managed_pool_t>();
+	}
 	
 	//ÍÐ¹Ü
 	managed_task_t	ti;
