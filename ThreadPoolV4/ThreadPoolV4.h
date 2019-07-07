@@ -43,7 +43,13 @@ namespace ThreadPoolV4
 	const task_id_t task_id_broadcast_sameclsothers = task_id_t(-3);
 	#define	IsSingleTaskID(x) ((x) != task_id_null && (x) != task_id_broadcast_allothers && (x) != task_id_broadcast_sameclsothers)
 
-	using task_data_t = std::shared_ptr<std::string>;
+	class task_data_base
+	{
+	public:
+		task_data_base() {}
+		virtual ~task_data_base() {}
+	};
+	using task_data_t = std::shared_ptr<task_data_base>;
 
 	using task_flag_t = UINT32;
 	const task_flag_t task_flag_null = 0x00;

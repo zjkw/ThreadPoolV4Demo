@@ -28,3 +28,4 @@ TaskErrorCode	tixGetTaskByName(const task_name_t& name, task_id_t& id);
 
 //Debug
 TaskErrorCode	tixPrintMeta();
+void			tixDebugViewLocalVariables();

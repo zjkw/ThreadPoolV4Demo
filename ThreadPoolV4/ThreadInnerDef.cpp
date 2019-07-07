@@ -64,7 +64,7 @@ UINT32	CTimeWheelSheduler::Trigger(std::shared_ptr<ThreadCtrlBlock> tcb)
 			timer_id_t	tid = it->second;
 
 			ATLASSERT(ti.interval);
-			AddTimerHelper(tid, ti.interval, ti.cb, it->first.trigger_clock + ti.interval);
+			AddTimerHelper(tid, ti.interval, ti.cb, now + ti.interval);
 
 			do_count++;
 			ti.cb(tid);

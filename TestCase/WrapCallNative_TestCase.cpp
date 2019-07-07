@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include <atlbase.h>
 #include <stdio.h>
+#include "..\RawTaskData.h"
 #include "WrapCallNative_TestCase.h"
 
 CWrapCallNative_TestCase::CWrapCallNative_TestCase()
@@ -72,23 +73,24 @@ void CWrapCallNative_TestCase::WorkFunc_FibonMathSink(const task_id_t& sender_id
 		l = r;
 		r = s;
 	}
-	task_data_t	res_data = std::make_shared<std::string>();
-	res_data->resize(sizeof(s));
-	memcpy((char*)res_data->data(), &s, res_data->size());
+	std::shared_ptr<CRawTaskData>	res_data = std::make_shared<CRawTaskData>();
+	(*res_data)->resize(sizeof(s));
+	memcpy((char*)(*res_data)->data(), &s, (*res_data)->size());
 	PostMsg(sender_id, CMMNO_FIBON_RES, res_data);
 }
 
 void	CWrapCallNative_TestCase::CallFunc_FibonMathSink(const task_id_t& sender_id, const task_cmd_t& cmd, const task_data_t& data)
 {
+	std::shared_ptr<CRawTaskData>	raw_data = std::dynamic_pointer_cast<CRawTaskData>(data);
 	//9，从Wrap线程的计算结果回调
-	if (data->size() != sizeof(UINT64))
+	if ((*raw_data)->size() != sizeof(UINT64))
 	{
 		ATLASSERT(FALSE);
 		return;
 	}
 
 	UINT64	s;
-	memcpy(&s, (char*)data->data(), data->size());
+	memcpy(&s, (char*)(*raw_data)->data(), (*raw_data)->size());
 
 	printf("Fibon 1000 value: %lld\n", s);
 }

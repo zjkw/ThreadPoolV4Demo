@@ -48,6 +48,9 @@
     <ClInclude Include="TestCase\NativeCallNative_TestCase.h">
       <Filter>TestCase</Filter>
     </ClInclude>
+    <ClInclude Include="RawTaskData.h">
+      <Filter>TestCase</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -75,6 +78,9 @@
       <Filter>TestCase</Filter>
     </ClCompile>
     <ClCompile Include="TestCase\NativeCallNative_TestCase.cpp">
+      <Filter>TestCase</Filter>
+    </ClCompile>
+    <ClCompile Include="RawTaskData.cpp">
       <Filter>TestCase</Filter>
     </ClCompile>
   </ItemGroup>

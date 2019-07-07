@@ -235,7 +235,7 @@ private:
 		}
 		void Reset()
 		{
-			sinkfunc = nullptr;;
+			sinkfunc = nullptr;
 			userdata = nullptr;
 		}
 	};

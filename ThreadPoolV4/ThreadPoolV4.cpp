@@ -334,6 +334,8 @@ TaskErrorCode ThreadPoolV4::UnregMsgSink(const task_cmd_t& cmd)
 //内部数据分发，外部指示是否触发idle，返回本函数是否实际有处理业务
 TaskErrorCode	ThreadPoolV4::DispatchInternal(const BOOL& triggle_idle/* = TRUE*/, BOOL* real_empty_handle/* = nullptr*/)
 {
+	tixDebugViewLocalVariables();
+
 	task_id_t id = _tls_proxy.CreateIfInvalid();
 	if (id == task_id_null)
 	{
@@ -421,12 +423,20 @@ TaskErrorCode ThreadPoolV4::RunBaseLoop(const task_userloop_t& user_loop_func/* 
 	{
 		if (user_loop_func)
 		{
-			user_loop_func();
+			BOOL is_continue = user_loop_func();
+			if (!is_continue)
+			{
+				break;
+			}
 		}
 
-		DispatchInternal();
-		
-		Sleep(1);
+		BOOL internal_triggle = FALSE;
+		DispatchInternal(TRUE, &internal_triggle);
+
+		if (!internal_triggle)
+		{
+			Sleep(1);
+		}		
 	}
 
 	return TEC_SUCCEED;
@@ -443,6 +453,8 @@ TaskErrorCode ThreadPoolV4::RunWinLoop(const task_userloop_t& user_loop_func/* =
 	std::shared_ptr<ThreadCtrlBlock>	tcb = _tls_proxy.GetThreadCtrlBlock();
 	while (!tcb->IsWaitExit())
 	{
+		BOOL msg_triggle = FALSE;
+
 		MSG msg;
 		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 		{
@@ -451,6 +463,7 @@ TaskErrorCode ThreadPoolV4::RunWinLoop(const task_userloop_t& user_loop_func/* =
 				SetExitLoop(TRUE);
 				break;
 			}
+			msg_triggle = TRUE;
 
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
@@ -459,12 +472,20 @@ TaskErrorCode ThreadPoolV4::RunWinLoop(const task_userloop_t& user_loop_func/* =
 	
 		if (user_loop_func)
 		{
-			user_loop_func();
+			BOOL is_continue = user_loop_func();
+			if (!is_continue)
+			{
+				break;
+			}
 		}
 
-		DispatchInternal();
+		BOOL internal_triggle = FALSE;
+		DispatchInternal(TRUE, &internal_triggle);
 
-		Sleep(1);
+		if (!msg_triggle && !internal_triggle)
+		{
+			Sleep(1);
+		}		
 	}
 
 	return TEC_SUCCEED;

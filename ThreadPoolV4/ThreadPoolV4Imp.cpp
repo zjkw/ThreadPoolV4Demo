@@ -47,6 +47,11 @@ static std::map<task_id_t, task_static_t>									_static_table;
 static std::map<std::wstring, std::shared_ptr<managed_pool_t>, StrCaseCmp>	_managed_cls_table;
 static std::map<task_id_t, std::wstring>									_managed_task_index;
 static std::map<thread_id_t, std::wstring>									_managed_thread_index;
+void		tixDebugViewLocalVariables()
+{
+	int k = 0;
+	k++;
+}
 
 ///////////////¾²Ì¬±í¸¨Öú¹ÜÀí
 static task_id_t		StaticAllocTaskID_InLock()
