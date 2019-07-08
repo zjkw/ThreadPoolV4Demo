@@ -27,7 +27,7 @@ void	CNativeCallWrap_TestCase::DoTest()
 	_caller_thread = std::make_shared<std::thread>(&CNativeCallWrap_TestCase::NativeCallerRoutinue, this);
 }
 
-void	CNativeCallWrap_TestCase::WorkRoutine(const task_id_t& self_id, const task_param_t& param)
+void	CNativeCallWrap_TestCase::WorkRoutine(const task_id_t& self_id, const task_data_t& param)
 {
 	//5，Wrap线程注册任务函数，用于接收对应任务
 	TaskErrorCode tec = RegMsgSink(CMMNO_FIBON_REQ, std::bind(&CNativeCallWrap_TestCase::WorkFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), nullptr);

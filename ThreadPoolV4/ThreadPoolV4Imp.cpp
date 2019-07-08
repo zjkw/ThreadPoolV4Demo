@@ -19,7 +19,7 @@ struct managed_thread_t
 struct managed_task_t
 {
 	task_cls_t		cls;
-	task_param_t	param;
+	task_data_t	param;
 	task_routinefunc_t routine;
 	managed_thread_t*		thread_item_ptr;	//当TWS_ACTIVE时候有效，标明是哪个线程
 
@@ -49,8 +49,7 @@ static std::map<task_id_t, std::wstring>									_managed_task_index;
 static std::map<thread_id_t, std::wstring>									_managed_thread_index;
 void		tixDebugViewLocalVariables()
 {
-	int k = 0;
-	k++;
+//	__nop();
 }
 
 ///////////////静态表辅助管理
@@ -363,7 +362,7 @@ static BOOL CreatePoolIfNotExist_InLock(std::unique_lock<std::mutex>& lck, const
 	return TRUE;
 }
 
-static TaskErrorCode PoolAddManagedTask_InLock(std::unique_lock<std::mutex>& lck, const task_cls_t& cls, const task_id_t& id, const task_param_t& param, const task_routinefunc_t& routine)
+static TaskErrorCode PoolAddManagedTask_InLock(std::unique_lock<std::mutex>& lck, const task_cls_t& cls, const task_id_t& id, const task_data_t& param, const task_routinefunc_t& routine)
 {
 	task_cls_t cls_std = GetStdCls(cls);
 
@@ -679,18 +678,20 @@ TaskErrorCode			tixClearManagedTask(const task_id_t& call_id, const task_userloo
 	}
 
 	//所有托管线程退出
-	BOOL loop_again = TRUE;
+	BOOL loop_again_once = TRUE;
 	while (true)
 	{
 		//可能需要窗口消息交互，一个例子是：
 		//父线窗口有父窗口，子线程有其子窗口，当父线程删除子线程的时候，父线程在此等待子线程退出，但子线程窗口删除过程需要和父窗口交互，
 		//所以会一直等待父线程的父窗口响应，如果父窗口是"硬核"等待子窗口，那么就等于死锁了
 		//这提示我们：关键在于父窗口/线程需要做到在等待过程中响应子线程的必要消息，故父线程在等待中要有消息循环放开口子
-		if (user_loop_func && loop_again)
+		//不能使用返回值user_loop_func控制user_loop_func本身，因为后面就无法删除跨线程子窗口（父窗口在主线程）、
+		if (user_loop_func)
 		{
-			loop_again = user_loop_func();
-			if (!loop_again)
+			BOOL loop_again = user_loop_func();
+			if (!loop_again && loop_again_once)
 			{
+				loop_again_once = FALSE;
 				SetExitLoop(TRUE);
 			}
 		}
@@ -731,7 +732,7 @@ TaskErrorCode tixGetTaskName(const task_id_t& id, task_name_t& name)
 	return StaticGetTaskName_InLock(id, name);
 }
 
-TaskErrorCode tixAddManagedTask(const task_cls_t& cls, const task_name_t& name, const task_param_t& param, const task_routinefunc_t& routine, task_id_t& id)
+TaskErrorCode tixAddManagedTask(const task_cls_t& cls, const task_name_t& name, const task_data_t& param, const task_routinefunc_t& routine, task_id_t& id)
 {
 	std::unique_lock <std::mutex> lck(_mutex);
 	if (_exit_flag)
@@ -777,17 +778,21 @@ TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& targe
 
 	if(err == TEC_SUCCEED)
 	{
-		BOOL loop_again = TRUE;
+		BOOL loop_again_marke = TRUE;
 		while (true)
-		{			
+		{
 			//可能需要窗口消息交互，一个例子是父线窗口是父窗口，子线程是子窗口，当通知子线程退出时候，
 			//父线程在此等待，但子线程窗口删除过程需要和父线程交互，导致子线程无法DestroyWindow，一直
 			//等待父线程响应，而父线程又在等待子线程退出...
-			if (user_loop_func && loop_again)
+			//不能使用返回值user_loop_func控制user_loop_func本身，因为后面就无法删除跨线程子窗口（父窗口在主线程）、
+			if (user_loop_func)
 			{
-				loop_again = user_loop_func();
-				if (!loop_again)
+				BOOL loop_again = user_loop_func();
+				//不能使用返回值，因为后面就无法删除跨线程子窗口（父窗口在主线程）、
+
+				if (!loop_again && loop_again_marke)
 				{
+					loop_again_marke = FALSE;
 					SetExitLoop(TRUE);
 				}
 			}

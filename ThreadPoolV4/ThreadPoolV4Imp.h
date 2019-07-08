@@ -20,7 +20,7 @@ TaskErrorCode	tixSetTaskAttri(const task_id_t& id, const UINT32& unhandle_msg_ti
 TaskErrorCode	tixGetTaskName(const task_id_t& id, task_name_t& name);
 
 //任务管理
-TaskErrorCode	tixAddManagedTask(const task_cls_t& cls, const task_name_t& name, const task_param_t& param, const task_routinefunc_t& routine, task_id_t& id);	//调节任务
+TaskErrorCode	tixAddManagedTask(const task_cls_t& cls, const task_name_t& name, const task_data_t& param, const task_routinefunc_t& routine, task_id_t& id);	//调节任务
 //是否等待目标关闭，需要明确的是如果自己关闭自己或关闭非托管线程，将会是强制改成异步																																									
 TaskErrorCode	tixDelManagedTask(const task_id_t& call_id, const task_id_t& target_id, const task_userloop_t& user_loop_func);
 TaskErrorCode	tixGetTaskState(const task_id_t& id, TaskWorkState& state);

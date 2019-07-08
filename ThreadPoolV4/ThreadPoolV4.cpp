@@ -60,7 +60,7 @@ void	CThreadLocalProxy::DeleteIfValid()
 	}
 }
 
-TaskErrorCode CThreadLocalProxy::RegDefaultMsgSink(const task_sinkfunc_t& sinkfunc, const msgsink_userdata_t& userdata)	//没有接收器的消息进入垃圾箱
+TaskErrorCode CThreadLocalProxy::RegDefaultMsgSink(const task_sinkfunc_t& sinkfunc, const task_data_t& userdata)	//没有接收器的消息进入垃圾箱
 {
 	//发送者的TLS可能还没初始化，应该先建立网络
 	task_id_t id = CreateIfInvalid();
@@ -80,7 +80,7 @@ TaskErrorCode CThreadLocalProxy::UnregDefaultMsgSink()
 	return TEC_SUCCEED;
 }
 
-TaskErrorCode CThreadLocalProxy::RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc, const msgsink_userdata_t& userdata)
+TaskErrorCode CThreadLocalProxy::RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc, const task_data_t& userdata)
 {
 	//发送者的TLS可能还没初始化，应该先建立网络
 	task_id_t id = CreateIfInvalid();
@@ -311,7 +311,7 @@ TaskErrorCode ThreadPoolV4::PostMsg(const task_name_t& receiver_task_name, const
 	return tec;
 }
 //针对接收者
-TaskErrorCode ThreadPoolV4::RegDefaultMsgSink(const task_sinkfunc_t& sinkfunc, const msgsink_userdata_t& userdata)	//没有接收器的消息进入垃圾箱
+TaskErrorCode ThreadPoolV4::RegDefaultMsgSink(const task_sinkfunc_t& sinkfunc, const task_data_t& userdata)	//没有接收器的消息进入垃圾箱
 {
 	return _tls_proxy.RegDefaultMsgSink(sinkfunc, userdata);
 }
@@ -321,7 +321,7 @@ TaskErrorCode ThreadPoolV4::UnregDefaultMsgSink()
 	return _tls_proxy.UnregDefaultMsgSink();
 }
 
-TaskErrorCode ThreadPoolV4::RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc, const msgsink_userdata_t& userdata)
+TaskErrorCode ThreadPoolV4::RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc, const task_data_t& userdata)
 {
 	return _tls_proxy.RegMsgSink(cmd, sinkfunc, userdata);
 }
@@ -332,7 +332,7 @@ TaskErrorCode ThreadPoolV4::UnregMsgSink(const task_cmd_t& cmd)
 }
 
 //内部数据分发，外部指示是否触发idle，返回本函数是否实际有处理业务
-TaskErrorCode	ThreadPoolV4::DispatchInternal(const BOOL& triggle_idle/* = TRUE*/, BOOL* real_empty_handle/* = nullptr*/)
+TaskErrorCode	ThreadPoolV4::DispatchInternal(const BOOL& triggle_idle/* = TRUE*/, BOOL* real_triggle/* = nullptr*/)
 {
 	tixDebugViewLocalVariables();
 
@@ -355,9 +355,9 @@ TaskErrorCode	ThreadPoolV4::DispatchInternal(const BOOL& triggle_idle/* = TRUE*/
 		idler_count = dls->Trigger(tcb);
 	}
 
-	if (real_empty_handle)
+	if (real_triggle)
 	{
-		*real_empty_handle = !!msg_count || !!timer_count || !!idler_count;
+		*real_triggle = !!msg_count || !!timer_count || !!idler_count;
 	}
 
 	return TEC_SUCCEED;
@@ -520,7 +520,7 @@ TaskErrorCode ThreadPoolV4::IsExitLoop(BOOL& enable)
 }
 
 //任务管理
-TaskErrorCode ThreadPoolV4::AddManagedTask(const task_cls_t& cls, const task_name_t& name, const task_param_t& param, const task_routinefunc_t& routine, task_id_t& id)	//调节任务
+TaskErrorCode ThreadPoolV4::AddManagedTask(const task_cls_t& cls, const task_name_t& name, const task_data_t& param, const task_routinefunc_t& routine, task_id_t& id)	//调节任务
 {
 	return 	tixAddManagedTask(cls, name, param, routine, id);
 }

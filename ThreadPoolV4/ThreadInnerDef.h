@@ -209,9 +209,9 @@ public:
 
 	task_id_t		CreateIfInvalid();
 	void			DeleteIfValid();
-	TaskErrorCode	RegDefaultMsgSink(const task_sinkfunc_t& sinkfunc, const msgsink_userdata_t& userdata);	//没有接收器的消息进入垃圾箱
+	TaskErrorCode	RegDefaultMsgSink(const task_sinkfunc_t& sinkfunc, const task_data_t& userdata);	//没有接收器的消息进入垃圾箱
 	TaskErrorCode	UnregDefaultMsgSink();
-	TaskErrorCode	RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc, const msgsink_userdata_t& userdata);
+	TaskErrorCode	RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc, const task_data_t& userdata);
 	TaskErrorCode	UnregMsgSink(const task_cmd_t& cmd);
 	TaskErrorCode	PostMsg(const task_id_t& receiver_task_id, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags = task_flag_null);//target_id为0表示广播
 	TaskErrorCode	DispatchMsg(size_t& count);
@@ -228,9 +228,9 @@ private:
 	struct msgsink_pair
 	{
 		task_sinkfunc_t		sinkfunc;
-		msgsink_userdata_t	userdata;
+		task_data_t	userdata;
 
-		msgsink_pair(const task_sinkfunc_t& sinkfunc_ = nullptr, const msgsink_userdata_t& userdata_ = nullptr) : sinkfunc(sinkfunc_), userdata(userdata_)
+		msgsink_pair(const task_sinkfunc_t& sinkfunc_ = nullptr, const task_data_t& userdata_ = nullptr) : sinkfunc(sinkfunc_), userdata(userdata_)
 		{
 		}
 		void Reset()

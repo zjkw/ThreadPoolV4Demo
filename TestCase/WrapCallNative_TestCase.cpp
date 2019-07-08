@@ -30,7 +30,7 @@ void	CWrapCallNative_TestCase::DoTest()
 	}
 }
 
-void	CWrapCallNative_TestCase::NativeCallerRoutinue(const task_id_t& self_id, const task_param_t& param)
+void	CWrapCallNative_TestCase::NativeCallerRoutinue(const task_id_t& self_id, const task_data_t& param)
 {
 	//3，Wrap线程注册任务函数，用于接收对应任务
 	TaskErrorCode tec = RegMsgSink(CMMNO_FIBON_RES, std::bind(&CWrapCallNative_TestCase::CallFunc_FibonMathSink, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), nullptr);

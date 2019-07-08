@@ -1,15 +1,16 @@
 #pragma once
 
 //提供两大功能：任务(线程)管理，任务间通信
-//	数据交换有两种模式：前者适合异步消息通信场合，后者适用于需要低时延和高吞吐的场合；两种模式能共存
+//	数据交换有两种模式：前者适合异步消息通信场合，后者适用于需要低时延和高吞吐的场合；两种模式能共存，对
+//	应的,task_data_t既能通过PostMsg通信，又能通过AddManagedTask任务参数传递
 //		基于消息通信PostMsg/FetchMsg(内置)
-//		基于线程参数task_param_t的对象数据共享和交换，这要求调用和被调用线程自营数据交换对象的生产和消费
+//		基于线程参数task_data_t的对象数据共享和交换，这要求调用和被调用线程自营数据交换对象的生产和消费
 //
 //	任务通过task_id_t标识，可能处于正在运行或待运行状态，而这个和所处线程环境密切相关
 //		如果是通过AddManagedTask创建的Task，我们命名为托管任务，是绑定了task_routinefunc_t的，所处的实际
 //			运行线程可能会串行运行多个任务，但对用户来说，无需感知其背景线程环境
 //		否则为非托管任务，其与当前线程绑定，一旦执行库的函数，将会自动创建一个task_id_t，直到线程生命期结
-//			束才解除绑定关系，但这个'任务'不同于上面的托管任务，其实际是只用一个task_id_t作为id来标识，并
+//			束才解除绑定关系，但这种'任务'不同于上面的托管任务，其实际是只用一个task_id_t作为id来标识，并
 //			无绑定task_routinefunc_t
 //		具体实现上，托管任务是包括了非托管任务相关数据结构的，两者是一个超集和子集的关系
 //
@@ -48,30 +49,14 @@ namespace ThreadPoolV4
 	public:
 		task_data_base() {}
 		virtual ~task_data_base() {}
+		virtual void	Print(LPCTSTR prix) {}
 	};
 	using task_data_t = std::shared_ptr<task_data_base>;
 
 	using task_flag_t = UINT32;
 	const task_flag_t task_flag_null = 0x00;
 	const task_flag_t task_flag_debug = 0x01;
-
-	class task_param_base
-	{
-	public:
-		task_param_base() {}
-		virtual ~task_param_base() {}
-		virtual void	Print(LPCTSTR prix) {}
-	};
-	using task_param_t = std::shared_ptr<task_param_base>;
-
-	class msgsink_userdata_base
-	{
-	public:
-		msgsink_userdata_base() {}
-		virtual ~msgsink_userdata_base() {}
-		virtual void	Print(LPCTSTR prix) {}
-	};
-	using msgsink_userdata_t = std::shared_ptr<msgsink_userdata_base>;
+	
 
 	using task_cls_t = std::wstring;
 	const task_cls_t	task_cls_default = _T("default");
@@ -108,11 +93,11 @@ namespace ThreadPoolV4
 	};
 	
 	//接收者注册的回调函数
-	using task_sinkfunc_t = std::function<void(const task_id_t& sender_id, const task_cmd_t& cmd, const task_data_t& data, const msgsink_userdata_t& userdata)>;
+	using task_sinkfunc_t = std::function<void(const task_id_t& sender_id, const task_cmd_t& cmd, const task_data_t& data, const task_data_t& userdata)>;
 	//发送者发送后，对于发送结果的回调通知
 	using task_echofunc_t = std::function<void(const task_id_t& receiver_id, const task_cmd_t& cmd, const task_data_t& data, const TaskErrorCode& err)>;	
 	//托管线程入口，需要定期轮询IsExitLoop，是否外部要求其退出
-	using task_routinefunc_t = std::function<void(const task_id_t& self_id, const task_param_t& param)>;	
+	using task_routinefunc_t = std::function<void(const task_id_t& self_id, const task_data_t& param)>;	
 	//自定义一轮循环函数，返回FALSE表示希望循环结束
 	using task_userloop_t = std::function<BOOL()>;
 
@@ -122,11 +107,11 @@ namespace ThreadPoolV4
 	TaskErrorCode	PostMsg(const task_name_t& receiver_task_name, const task_cmd_t& cmd, task_data_t data, const task_flag_t& flags = task_flag_null, const task_echofunc_t& echofunc = nullptr);
 
 	//针对接收者
-	TaskErrorCode	RegDefaultMsgSink(const task_sinkfunc_t& sinkfunc, const msgsink_userdata_t& userdata);	//没有接收器的消息进入垃圾箱
+	TaskErrorCode	RegDefaultMsgSink(const task_sinkfunc_t& sinkfunc, const task_data_t& userdata);	//没有接收器的消息进入垃圾箱
 	TaskErrorCode	UnregDefaultMsgSink();
-	TaskErrorCode	RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc, const msgsink_userdata_t& userdata);
+	TaskErrorCode	RegMsgSink(const task_cmd_t& cmd, const task_sinkfunc_t& sinkfunc, const task_data_t& userdata);
 	TaskErrorCode	UnregMsgSink(const task_cmd_t& cmd);
-	TaskErrorCode	DispatchInternal(const BOOL& triggle_idle = TRUE, BOOL* real_empty_handle = nullptr);//内部数据分发，外部指示是否触发idle，输出参数表示函数是否实际有处理业务
+	TaskErrorCode	DispatchInternal(const BOOL& triggle_idle = TRUE, BOOL* real_triggle = nullptr);//内部数据分发，外部指示是否触发idle，输出参数表示函数是否实际有处理业务
 
 	//---------线程池-----------
 	void			SetManagedClsAttri(const task_cls_t& cls, const UINT16& thread_limit_max_num, const UINT32& unhandle_msg_timeout);//调节线程数量
@@ -139,7 +124,7 @@ namespace ThreadPoolV4
 	TaskErrorCode	IsExitLoop(BOOL& enable);
 
 	//---------任务管理----------
-	TaskErrorCode	AddManagedTask(const task_cls_t& cls, const task_name_t& name, const task_param_t& param, const task_routinefunc_t& routine, task_id_t& id);
+	TaskErrorCode	AddManagedTask(const task_cls_t& cls, const task_name_t& name, const task_data_t& param, const task_routinefunc_t& routine, task_id_t& id);
 	//阻塞等待目标完成，如果是托管任务/线程调用此函数，需要关注返回码，因为不会允许自己删除自己，而且可能有互相删除对方导致死锁，应该尽量在外部避免
 	TaskErrorCode	DelManagedTask(const task_id_t& id, const task_userloop_t& user_loop_func = nullptr);
 	//同DelManagedTask注意事项

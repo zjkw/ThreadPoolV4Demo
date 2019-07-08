@@ -1,6 +1,4 @@
-﻿  WrapCallWrap_TestCase.cpp
-  WrapCallNative_TestCase.cpp
-  NativeCallWrap_TestCase.cpp
-  正在生成代码...
+﻿  WrapCallNative_TestCase.cpp
+RawTaskData.obj : warning LNK4075: 忽略“/EDITANDCONTINUE”(由于“/OPT:LBR”规范)
   ThreadPoolV4Demo.vcxproj -> G:\Proj\MiaLivePure\ThreadPoolV4Demo\Debug\ThreadPoolV4Demo.exe
   ThreadPoolV4Demo.vcxproj -> G:\Proj\MiaLivePure\ThreadPoolV4Demo\Debug\ThreadPoolV4Demo.pdb (Full PDB)
