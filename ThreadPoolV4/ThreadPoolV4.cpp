@@ -525,7 +525,7 @@ TaskErrorCode ThreadPoolV4::AddManagedTask(const task_cls_t& cls, const task_nam
 	return 	tixAddManagedTask(cls, name, param, routine, id);
 }
 
-TaskErrorCode ThreadPoolV4::DelManagedTask(const task_id_t& id, const task_userloop_t& user_loop_func/* = nullptr*/)//是否等待目标关闭，需要明确的是如果自己关闭自己或关闭非托管线程，将会是强制改成异步
+TaskErrorCode ThreadPoolV4::DelManagedTask(const task_id_t& id, const task_userloop_t& user_loop_func/* = nullptr*/, const DelTaskMode& dtm/* = DTM_AUTOSIGN_SYNC*/)
 {
 	//参数检查
 
@@ -536,7 +536,7 @@ TaskErrorCode ThreadPoolV4::DelManagedTask(const task_id_t& id, const task_userl
 		return TEC_ALLOC_FAILED;
 	}
 
-	return 	tixDelManagedTask(call_id, id, user_loop_func);
+	return 	tixDelManagedTask(call_id, id, user_loop_func, dtm);
 }
 
 TaskErrorCode	ThreadPoolV4::GetTaskState(const task_id_t& id, TaskWorkState& state)
@@ -664,7 +664,7 @@ TaskErrorCode	ThreadPoolV4::ExistIdle(const idle_id_t& iid, BOOL& exist)
 
 ///////////////////////////////////////////////////////////////
 ThreadPoolV4::CTaskTimerHelper::CTaskTimerHelper()
-	: _timer_id(0), _cb(nullptr)
+	: _timer_id(0), _cb(nullptr), _millisecond(0)
 {
 	_belongs_task_id = GetCurrentTaskID();
 }
@@ -700,6 +700,7 @@ BOOL ThreadPoolV4::CTaskTimerHelper::Start(const UINT32& millisecond, const BOOL
 		return FALSE;
 	}
 
+	_millisecond = millisecond;
 	return TRUE;
 }
 
@@ -717,6 +718,7 @@ void ThreadPoolV4::CTaskTimerHelper::Stop()
 			return;
 		}
 	}
+	_millisecond = 0;
 }
 
 BOOL ThreadPoolV4::CTaskTimerHelper::IsActive()
@@ -750,6 +752,11 @@ void ThreadPoolV4::CTaskTimerHelper::SetCallBack(const timer_sinkfunc_t& cb)
 		}
 	}
 	*_cb = cb;
+}
+
+UINT32 ThreadPoolV4::CTaskTimerHelper::GetInterval()
+{
+	return _millisecond;
 }
 
 void ThreadPoolV4::CTaskTimerHelper::OnTimer(const timer_id_t& tid)

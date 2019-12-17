@@ -4,7 +4,8 @@
 //	数据交换有两种模式：前者适合异步消息通信场合，后者适用于需要低时延和高吞吐的场合；两种模式能共存，对
 //	应的,task_data_t既能通过PostMsg通信，又能通过AddManagedTask任务参数传递
 //		基于消息通信PostMsg/FetchMsg(内置)
-//		基于线程参数task_data_t的对象数据共享和交换，这要求调用和被调用线程自营数据交换对象的生产和消费
+//		基于线程参数task_data_t的对象数据共享和交换，这要求调用和被调用线程自营数据交换对象的生产和消费,
+//			但是需要参数是否前后线程复用，如无必要，需要在新线程创建后清理残留在"管道"的数据			
 //
 //	任务通过task_id_t标识，可能处于正在运行或待运行状态，而这个和所处线程环境密切相关
 //		如果是通过AddManagedTask创建的Task，我们命名为托管任务，是绑定了task_routinefunc_t的，所处的实际
@@ -20,9 +21,16 @@
 //	线程库提供一个按Group/Cls的简单类别管理能力，每个类别有自己个性化的“线程池”，与其他类别区隔开来，注
 //		意目前每类别线程池的线程数默认为 2
 //
-//	删除托管线程时候，会带上调用者所在线程的消息循环回调，这样的好处是便于线程之间仍然可以通过Windows消息
-//		进行DestroyWindow通信，不足之处在于既然调用者线程还能响应消息那么就需要解决"调用者线程处理好删除调
-//		用本身甚至受影响的数据的重入"问题
+//	删除托管线程时候，特别需要注意两个问题：
+//		//1，支持异步删除，即通知线程池删除立即返回，实际删除可能是此后，这要求调用者需要明确，线程所占有的
+//				资源可能没法立即清理，以及下次复用该线程可能是要较长时间才能实际被"调度"到
+//		//2，同步情况下，会带上调用者所在线程的消息循环回调，这样的好处是便于线程之间仍然可以通过Windows消息
+//				进行DestroyWindow通信，不足之处在于既然调用者线程还能响应消息那么就需要解决"调用者线程处理好删除调
+//				用本身甚至受影响的数据的重入"问题
+//
+//	如果外部比如主线程是通过一个task_id_t来控制工作线程生命期的，且存在工作线程可能会自己退出或额外其他线程
+//		导致其退出的情况下，必须注意同步task_id_t的有效性，一般来说可以通知主线程来DelManagedTask而不是自行
+//		退出，或者主线程轮询GetTaskState
 //
 //	多数接口是基于当前线程上下文进行的操作，除了: 
 //		SetManagedClsAttri，AddManagedTask，GetTaskState，GetTaskByName，PrintMeta等
@@ -91,6 +99,14 @@ namespace ThreadPoolV4
 		TWS_AWAIT = 1,					//等待装入线程
 		TWS_ACTIVE = 2,					//正在线程中运行
 	};
+	enum DelTaskMode
+	{
+		DTM_NONE = 0,
+		DTM_AUTOSIGN_SYNC = 1,				//线程库内部发退出信号，并同步等待删除
+		DTM_CUSTOMSIGN_SYNC = 2,			//应用层自行发退出信号，并同步等待删除
+		DTM_AUTOSIGN_ASYNC = 3,				//线程库内部发退出信号，不等待其是否确认删除，直接返回
+		DTM_CUSTOMSIGN_ASYNC = 4,			//应用层自行发退出信号，不等待其是否确认删除，直接返回
+	};
 	
 	//接收者注册的回调函数
 	using task_sinkfunc_t = std::function<void(const task_id_t& sender_id, const task_cmd_t& cmd, const task_data_t& data, const task_data_t& userdata)>;
@@ -126,8 +142,10 @@ namespace ThreadPoolV4
 	//---------任务管理----------
 	TaskErrorCode	AddManagedTask(const task_cls_t& cls, const task_name_t& name, const task_data_t& param, const task_routinefunc_t& routine, task_id_t& id);
 	//阻塞等待目标完成，如果是托管任务/线程调用此函数，需要关注返回码，因为不会允许自己删除自己，而且可能有互相删除对方导致死锁，应该尽量在外部避免
-	TaskErrorCode	DelManagedTask(const task_id_t& id, const task_userloop_t& user_loop_func = nullptr);
-	//同DelManagedTask注意事项
+	//但此刻实际线程可能还在运行甚至还会依据实际工作任务继续持续一段时间，外部调用者需要自行确保安全性和线程复用成本
+	//需要明确的是如果自己关闭自己或关闭非托管线程，将会是强制改成异步
+	TaskErrorCode	DelManagedTask(const task_id_t& id, const task_userloop_t& user_loop_func = nullptr, const DelTaskMode& dtm = DTM_AUTOSIGN_SYNC);
+	//同DelManagedTask注意事项，但只支持同步阻塞模式，这是基于资源需要先清理的考虑
 	TaskErrorCode	ClearManagedTask(const task_userloop_t& user_loop_func = nullptr);
 	TaskErrorCode	GetTaskState(const task_id_t& id, TaskWorkState& state);
 	TaskErrorCode	GetTaskByName(const task_name_t& name, task_id_t& id);//Name不分区大小写全局唯一
@@ -154,11 +172,13 @@ namespace ThreadPoolV4
 		void Stop();
 		BOOL IsActive();
 		void SetCallBack(const timer_sinkfunc_t& cb);
+		UINT32 GetInterval();
 
 	protected:
 		timer_id_t			_timer_id;
 		timer_sinkfunc_t*	_cb;	//改为指针是为了方便导出
 		task_id_t			_belongs_task_id;
+		UINT32				_millisecond;
 
 		void	OnTimer(const timer_id_t& tid);
 	};

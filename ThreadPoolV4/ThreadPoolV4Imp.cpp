@@ -410,7 +410,7 @@ static TaskErrorCode PoolAddManagedTask_InLock(std::unique_lock<std::mutex>& lck
 }
 
 
-static TaskErrorCode PoolDelManagedTask_InLock(const task_id_t& call_id, const task_id_t& target_id)
+static TaskErrorCode PoolDelManagedTask_InLock(const task_id_t& call_id, const task_id_t& target_id, const BOOL& auto_sign_exit)
 {
 	//检查
 
@@ -441,8 +441,11 @@ static TaskErrorCode PoolDelManagedTask_InLock(const task_id_t& call_id, const t
 						ATLASSERT(FALSE);
 						return TEC_MANAGED_DELETE_SELF;
 					}
-					ATLASSERT(it3->second.thread_item_ptr);
-					it3->second.thread_item_ptr->thread_ctrlblock->SetWaitExit(TRUE);
+					if (auto_sign_exit)
+					{
+						ATLASSERT(it3->second.thread_item_ptr);
+						it3->second.thread_item_ptr->thread_ctrlblock->SetWaitExit(TRUE);
+					}
 
 					return TEC_SUCCEED;
 				}
@@ -761,7 +764,7 @@ TaskErrorCode tixAddManagedTask(const task_cls_t& cls, const task_name_t& name, 
 }
 																																									
 //是否等待目标关闭，需要明确的是如果自己关闭自己或关闭非托管线程，将会是强制改成异步																																									
-TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& target_id, const task_userloop_t& user_loop_func)
+TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& target_id, const task_userloop_t& user_loop_func, const DelTaskMode& dtm)
 {
 	TaskErrorCode err = TEC_SUCCEED;
 
@@ -773,13 +776,14 @@ TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& targe
 			return TEC_INVALID_THREADID;
 		}
 	
-		err = PoolDelManagedTask_InLock(call_id, target_id);
+		err = PoolDelManagedTask_InLock(call_id, target_id, dtm == DTM_AUTOSIGN_SYNC || dtm == DTM_AUTOSIGN_ASYNC);
 	}
 
 	if(err == TEC_SUCCEED)
 	{
 		BOOL loop_again_marke = TRUE;
-		while (true)
+
+		while (dtm == DTM_AUTOSIGN_SYNC || dtm == DTM_AUTOSIGN_ASYNC)
 		{
 			//可能需要窗口消息交互，一个例子是父线窗口是父窗口，子线程是子窗口，当通知子线程退出时候，
 			//父线程在此等待，但子线程窗口删除过程需要和父线程交互，导致子线程无法DestroyWindow，一直
@@ -808,7 +812,10 @@ TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& targe
 			}
 		}
 
-		tixDeleteUnmanagedTask(target_id);
+		if (dtm == DTM_AUTOSIGN_SYNC || dtm == DTM_AUTOSIGN_ASYNC)
+		{
+			tixDeleteUnmanagedTask(target_id);
+		}
 	}	
 
 	return err;

@@ -51,15 +51,15 @@ UINT32	CTimeWheelSheduler::Trigger(std::shared_ptr<ThreadCtrlBlock> tcb)
 
 		//符合条件的有两种：已经执行过且插队的；未执行过的
 		//其中前者需要检查，当seq不符合的，则跳过而不是跳出，给其他人机会；后者即可跳出
-
-		if (it->first.trigger_clock > now)
-		{
-			break;
-		}
-
 		cursor_id = it->first;
 		if (it->first.seq < old_seq)
 		{
+			//有效的项目，但还不够格，等下一波
+			if (it->first.trigger_clock > now)
+			{
+				break;
+			}
+
 			TimerItem	ti = it->first;
 			timer_id_t	tid = it->second;
 
