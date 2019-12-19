@@ -783,7 +783,7 @@ TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& targe
 	{
 		BOOL loop_again_marke = TRUE;
 
-		while (dtm == DTM_AUTOSIGN_SYNC || dtm == DTM_AUTOSIGN_ASYNC)
+		while (dtm == DTM_AUTOSIGN_SYNC || dtm == DTM_CUSTOMSIGN_SYNC)
 		{
 			//可能需要窗口消息交互，一个例子是父线窗口是父窗口，子线程是子窗口，当通知子线程退出时候，
 			//父线程在此等待，但子线程窗口删除过程需要和父线程交互，导致子线程无法DestroyWindow，一直
@@ -812,7 +812,7 @@ TaskErrorCode tixDelManagedTask(const task_id_t& call_id, const task_id_t& targe
 			}
 		}
 
-		if (dtm == DTM_AUTOSIGN_SYNC || dtm == DTM_AUTOSIGN_ASYNC)
+		if (dtm == DTM_AUTOSIGN_SYNC || dtm == DTM_CUSTOMSIGN_SYNC)
 		{
 			tixDeleteUnmanagedTask(target_id);
 		}
